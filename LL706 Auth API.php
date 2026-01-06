@@ -432,8 +432,8 @@ function ll706_jwt_decode($jwt) {
 function ll706_auth_login(WP_REST_Request $req) {
   $opts = ll706_auth_api_get_options();
 
-  $raw_username = trim((string)$req->get_param('username'));
-  $password     = (string)$req->get_param('password');
+  $raw_username = trim((string) wp_unslash($req->get_param('username')));
+  $password     = (string) wp_unslash($req->get_param('password'));
 
   if ($raw_username === '' || $password === '') {
     return new WP_REST_Response([
@@ -577,9 +577,9 @@ function ll706_auth_register(WP_REST_Request $req) {
     }
   }
 
-  $username = sanitize_user($req->get_param('username'), true);
-  $email    = sanitize_email($req->get_param('email'));
-  $password = (string) $req->get_param('password');
+  $username = sanitize_user(wp_unslash((string) $req->get_param('username')), true);
+  $email    = sanitize_email(wp_unslash((string) $req->get_param('email')));
+  $password = (string) wp_unslash($req->get_param('password'));
 
   if (username_exists($username) || email_exists($email)) {
     return new WP_REST_Response([
@@ -606,13 +606,13 @@ function ll706_auth_register(WP_REST_Request $req) {
   // Core WP profile
   wp_update_user([
     'ID'         => $user_id,
-    'first_name' => sanitize_text_field($req->get_param('first_name')),
-    'last_name'  => sanitize_text_field($req->get_param('last_name')),
+    'first_name' => sanitize_text_field(wp_unslash($req->get_param('first_name'))),
+    'last_name'  => sanitize_text_field(wp_unslash($req->get_param('last_name'))),
   ]);
 
   // Normalize email opt-in
   $email_opt_in = in_array(
-    strtolower((string) $req->get_param('email_opt_in')),
+    strtolower((string) wp_unslash($req->get_param('email_opt_in'))),
     ['1','true','yes','on'],
     true
   ) ? '1' : '0';
@@ -635,7 +635,7 @@ function ll706_auth_register(WP_REST_Request $req) {
       update_user_meta(
         $user_id,
         $meta_key,
-        sanitize_text_field($req->get_param($param))
+        sanitize_text_field(wp_unslash($req->get_param($param)))
       );
     }
   }
