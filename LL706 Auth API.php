@@ -538,6 +538,9 @@ function ll706_auth_login(WP_REST_Request $req) {
 
   $payload['data']['card_number']  = $meta['cardNumber'][0] ?? null;
   $payload['data']['email_opt_in'] = !empty($meta['EmailOptin'][0]);
+  $payload['data']['seniority_date'] =
+    $meta['Seniority_Date'][0]
+    ?? ($meta['SeniorityDate'][0] ?? ($meta['seniority_date'][0] ?? null));
 
   return new WP_REST_Response([
     'ok'=>true,
@@ -628,6 +631,7 @@ function ll706_auth_register(WP_REST_Request $req) {
     'phone_number_17'  => 'cellPhone',
     'cardNumber'       => 'cardNumber',
     'cardNumber_12'    => 'employeeNumber',
+    'Seniority_Date'   => 'seniority_date',
   ];
 
   foreach ($meta_map as $meta_key => $param) {
@@ -740,6 +744,9 @@ function ll706_auth_me(WP_REST_Request $req) {
 
   $user['card_number']  = $meta['cardNumber'][0] ?? null;
   $user['email_opt_in'] = !empty($meta['EmailOptin'][0]);
+  $user['seniority_date'] =
+    $meta['Seniority_Date'][0]
+    ?? ($meta['SeniorityDate'][0] ?? ($meta['seniority_date'][0] ?? null));
 
   return new WP_REST_Response([
     'ok' => true,
