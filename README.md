@@ -5,7 +5,7 @@ WordPress plugin that powers the LL706 mobile and web apps with hardened login, 
 ## Requirements
 
 - WordPress 6.0 or higher
-- Tested up to WordPress 6.9
+- Tested up to WordPress 7.0
 - PHP 7.4 or higher
 
 ## Features
@@ -110,6 +110,13 @@ These controls write the meta key configured in the settings page so you can ren
   (replace `ll706_approved` if you changed the meta key).
 
 ## Changelog
+
+### 0.9.0
+
+- Confirmed compatibility with WordPress 7.0 and PHP 7.4.
+- Hardened authenticated REST route permission callbacks.
+- Hardened admin profile access updates with nonce, capability, and state validation.
+- Normalized settings input with wp_unslash before sanitization.
 
 ### 0.8.3
 

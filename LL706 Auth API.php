@@ -3,9 +3,9 @@
  * Plugin Name: LL706 Auth API
  * Plugin URI: https://github.com/jcjason12108-alt/LL706-Auth-API/
  * Description: WordPress login + manual approval + JWT auth for LL706 mobile/web apps.
- * Version: 0.8.3
+ * Version: 0.9.0
  * Requires at least: 6.0
- * Tested up to: 6.9
+ * Tested up to: 7.0
  * Requires PHP: 7.4
  * Author: Jason Cox
  * Author URI: https://github.com/jcjason12108-alt
@@ -564,6 +564,8 @@ function ll706_auth_api_sanitize_options($opts) {
 
   if (!is_array($opts)) return $defaults;
 
+  $opts = wp_unslash($opts);
+
   $out['jwt_secret']        = trim((string)($opts['jwt_secret'] ?? ''));
   $out['local_value']       = sanitize_text_field((string)($opts['local_value'] ?? '706'));
   $out['approved_meta_key'] = sanitize_key((string)($opts['approved_meta_key'] ?? 'll706_approved'));
@@ -879,9 +881,13 @@ function ll706_auth_api_render_user_access_controls($user) {
 
 function ll706_auth_api_save_user_access_controls($user_id) {
   if (!current_user_can('manage_options')) return;
+  if (!current_user_can('edit_user', $user_id)) return;
+  check_admin_referer('update-user_' . $user_id);
   if (!isset($_POST['ll706_approved_status'])) return;
 
   $status = sanitize_text_field(wp_unslash($_POST['ll706_approved_status']));
+  if (!in_array($status, ['approved', 'pending', 'auto'], true)) return;
+
   ll706_auth_api_update_user_access_status($user_id, $status);
 }
 
@@ -905,31 +911,31 @@ add_action('rest_api_init', function () {
   register_rest_route('ll706/v1', '/me', [
     'methods'  => 'GET',
     'callback' => 'll706_auth_me',
-    'permission_callback' => '__return_true',
+    'permission_callback' => 'll706_auth_api_require_bearer_token',
   ]);
 
   register_rest_route('ll706/v1', '/work-log', [
     'methods'  => 'GET',
     'callback' => 'll706_auth_work_log_get',
-    'permission_callback' => '__return_true',
+    'permission_callback' => 'll706_auth_api_require_bearer_token',
   ]);
 
   register_rest_route('ll706/v1', '/work-log', [
     'methods'  => 'POST',
     'callback' => 'll706_auth_work_log_create',
-    'permission_callback' => '__return_true',
+    'permission_callback' => 'll706_auth_api_require_bearer_token',
   ]);
 
   register_rest_route('ll706/v1', '/work-log/(?P<entry_uuid>[a-zA-Z0-9-]+)', [
     'methods'  => 'PUT',
     'callback' => 'll706_auth_work_log_update',
-    'permission_callback' => '__return_true',
+    'permission_callback' => 'll706_auth_api_require_bearer_token',
   ]);
 
   register_rest_route('ll706/v1', '/work-log/(?P<entry_uuid>[a-zA-Z0-9-]+)', [
     'methods'  => 'DELETE',
     'callback' => 'll706_auth_work_log_delete',
-    'permission_callback' => '__return_true',
+    'permission_callback' => 'll706_auth_api_require_bearer_token',
   ]);
 });
 
@@ -1341,6 +1347,11 @@ function ll706_auth_api_get_wordfence_blocks_table() {
   }
 
   return '';
+}
+
+function ll706_auth_api_require_bearer_token(WP_REST_Request $req) {
+  $payload = ll706_auth_get_current_user_from_request($req);
+  return is_wp_error($payload) ? $payload : true;
 }
 
 function ll706_auth_get_current_user_from_request(WP_REST_Request $req) {

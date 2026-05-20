@@ -2,9 +2,9 @@
 Contributors: jcjason12108-alt
 Tags: authentication, jwt, rest api, member approval
 Requires at least: 6.0
-Tested up to: 6.9
+Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 0.8.3
+Stable tag: 0.9.0
 License: GPL-2.0-or-later
 
 WordPress login, manual approval, JWT auth, and work-log REST endpoints for LL706 mobile and web apps.
@@ -30,6 +30,12 @@ Updates are checked from the `main` branch of `https://github.com/jcjason12108-a
 Yes. Define `PLUGIN_UPDATE_GITHUB_TOKEN` as a PHP constant or environment variable and the updater will authenticate GitHub requests with it.
 
 == Changelog ==
+
+= 0.9.0 =
+* Confirmed compatibility with WordPress 7.0 and PHP 7.4.
+* Hardened authenticated REST route permission callbacks.
+* Hardened admin profile access updates with nonce, capability, and state validation.
+* Normalized settings input with wp_unslash before sanitization.
 
 = 0.8.3 =
 * Added Plugin Update Checker 5.6 for GitHub-based automatic updates.
