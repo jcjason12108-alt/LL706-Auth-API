@@ -4,20 +4,20 @@ Tags: authentication, jwt, rest api, member approval
 Requires at least: 6.0
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 0.9.0
+Stable tag: 0.9.1
 License: GPL-2.0-or-later
 
 WordPress login, manual approval, JWT auth, and work-log REST endpoints for LL706 mobile and web apps.
 
 == Description ==
 
-LL706 Auth API powers LL706 mobile and web app authentication with hardened login, membership approval, JSON Web Token authentication, login history, and member work-log endpoints.
+LL706 Auth API powers LL706 mobile and web app authentication with hardened login, membership approval, JSON Web Token authentication, login history, a remote Ask Bruno dashboard form card, and member work-log endpoints.
 
 == Installation ==
 
 1. Upload the `ll706-auth-api` folder to `wp-content/plugins/`.
 2. Activate LL706 Auth API from Plugins in the WordPress dashboard.
-3. Open Settings > LL706 Auth API to configure the JWT secret, approval meta key, token lifetimes, and login log retention.
+3. Open Settings > LL706 Auth API to configure the JWT secret, approval meta key, dashboard form card, token lifetimes, and login log retention.
 
 == Frequently Asked Questions ==
 
@@ -30,6 +30,11 @@ Updates are checked from the `main` branch of `https://github.com/jcjason12108-a
 Yes. Define `PLUGIN_UPDATE_GITHUB_TOKEN` as a PHP constant or environment variable and the updater will authenticate GitHub requests with it.
 
 == Changelog ==
+
+= 0.9.1 =
+* Added remote-controlled Ask Bruno dashboard form-card settings.
+* Added public GET /wp-json/ll706/v1/dashboard-form configuration endpoint.
+* Sanitized and validated dashboard form title, subtitle, button title, URL, audience, and update timestamp.
 
 = 0.9.0 =
 * Confirmed compatibility with WordPress 7.0 and PHP 7.4.

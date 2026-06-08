@@ -13,6 +13,7 @@ WordPress plugin that powers the LL706 mobile and web apps with hardened login, 
 - Login endpoint that accepts username or email and issues signed JWT tokens with configurable TTLs per role.
 - Member self‑registration endpoint that collects profile meta (Ultimate Member compatible) and queues the account for manual approval.
 - `/me` endpoint that validates tokens, rehydrates Ultimate Member fields, and returns the current user payload.
+- Public `/dashboard-form` endpoint for a remote-controlled Ask Bruno dashboard form card.
 - Per-user work-log storage with authenticated create, read, update, and soft-delete endpoints.
 - Admin settings page with separate Overview, Settings, and Login History tabs.
 - Per-user app login summary showing each member’s latest successful app login, token status, IP, and user agent.
@@ -26,7 +27,7 @@ WordPress plugin that powers the LL706 mobile and web apps with hardened login, 
 
 1. Copy `LL706 Auth API.php` into `wp-content/plugins/ll706-auth-api/` (or clone this repository there).
 2. In the WordPress dashboard, activate **LL706 Auth API** under *Plugins → Installed Plugins*.
-3. Open *Settings → LL706 Auth API* to configure the JWT secret, approval meta key, token lifetimes, and login log retention. Changing the secret or the “Force Logout” button invalidates existing tokens.
+3. Open *Settings → LL706 Auth API* to configure the JWT secret, approval meta key, dashboard form card, token lifetimes, and login log retention. Changing the secret or the “Force Logout” button invalidates existing tokens.
 4. Use the *Overview* tab for built-in documentation and the *Login History* tab for recent app login activity and CSV export.
 
 ## REST API
@@ -37,6 +38,7 @@ All routes live under the namespace `ll706/v1`.
 | --- | --- | --- | --- |
 | `/login` | `POST` | Authenticate an existing member, vet approval status, and return a JWT payload. | `username` (or email), `password` |
 | `/register` | `POST` | Create a pending member and store Ultimate Member profile meta. | `username`, `password`, `email`, `first_name`, `last_name`, `local_number`, `email_opt_in` plus optional address/phone/card fields |
+| `/dashboard-form` | `GET` | Return the public dashboard form-card configuration for the app. | None |
 | `/me` | `GET` | Validate a token and return the hydrated user payload. | `Authorization: Bearer <token>` header |
 | `/work-log` | `GET` | Return the authenticated member’s non-deleted work-log entries. | `Authorization: Bearer <token>` header |
 | `/work-log` | `POST` | Create a work-log entry for the authenticated member. | `Authorization: Bearer <token>` header plus `work_date`, `shift` (`1st`, `2nd`, or `3rd`; numeric `1`, `2`, and `3` are normalized), `work_items`, and optional `entry_uuid`, `doubled`, `supervisor`, `worked_with`, `notes` |
@@ -110,6 +112,12 @@ These controls write the meta key configured in the settings page so you can ren
   (replace `ll706_approved` if you changed the meta key).
 
 ## Changelog
+
+### 0.9.1
+
+- Added remote-controlled Ask Bruno dashboard form-card settings.
+- Added public `GET /wp-json/ll706/v1/dashboard-form` configuration endpoint.
+- Sanitized and validated dashboard form title, subtitle, button title, URL, audience, and update timestamp.
 
 ### 0.9.0
 

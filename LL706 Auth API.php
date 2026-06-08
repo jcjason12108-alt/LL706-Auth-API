@@ -3,7 +3,7 @@
  * Plugin Name: LL706 Auth API
  * Plugin URI: https://github.com/jcjason12108-alt/LL706-Auth-API/
  * Description: WordPress login + manual approval + JWT auth for LL706 mobile/web apps.
- * Version: 0.9.0
+ * Version: 0.9.1
  * Requires at least: 6.0
  * Tested up to: 7.0
  * Requires PHP: 7.4
@@ -67,6 +67,16 @@ add_action('admin_init', function () {
     'sanitize_callback' => 'll706_auth_api_sanitize_options',
     'default' => []
   ]);
+
+  register_setting('ll706_auth_api', 'll706_dashboard_form_config', [
+    'type' => 'array',
+    'sanitize_callback' => 'll706_auth_api_sanitize_dashboard_form_config',
+    'default' => ll706_auth_api_dashboard_form_defaults(),
+  ]);
+});
+
+add_filter('option_page_capability_ll706_auth_api', function () {
+  return 'manage_options';
 });
 
 add_action('show_user_profile', 'll706_auth_api_render_user_access_controls');
@@ -103,6 +113,152 @@ function ll706_auth_api_defaults() {
 function ll706_auth_api_get_options() {
   $saved = get_option('ll706_auth_api_options', []);
   return array_merge(ll706_auth_api_defaults(), is_array($saved) ? $saved : []);
+}
+
+function ll706_auth_api_dashboard_form_defaults() {
+  return [
+    'enabled'      => false,
+    'title'        => '',
+    'subtitle'     => '',
+    'button_title' => 'Open Form',
+    'url'          => '',
+    'audience'     => ['all'],
+    'updated_at'   => '',
+  ];
+}
+
+function ll706_auth_api_dashboard_form_audience_choices() {
+  return [
+    'all'              => 'All Members',
+    'admin'            => 'Admin',
+    'executive_board'  => 'Executive Board',
+    'general_chairman' => 'General Chairman',
+  ];
+}
+
+function ll706_auth_api_dashboard_form_allowed_audience_values() {
+  return [
+    'all',
+    'all_members',
+    'admin',
+    'administrator',
+    'executive_board',
+    'executive',
+    'eboard',
+    'e_board',
+    'general_chairman',
+    'general_chair',
+    'chairman',
+  ];
+}
+
+function ll706_auth_api_sanitize_dashboard_form_audience($audience, $unslash = true) {
+  if ($audience === null || $audience === '') {
+    return [];
+  }
+
+  if (!is_array($audience)) {
+    $audience = [$audience];
+  }
+
+  $allowed = ll706_auth_api_dashboard_form_allowed_audience_values();
+  $out = [];
+
+  foreach ($audience as $value) {
+    if (is_array($value) || is_object($value)) {
+      continue;
+    }
+
+    $text = $unslash ? wp_unslash((string) $value) : (string) $value;
+    $normalized = sanitize_key($text);
+    if (in_array($normalized, $allowed, true)) {
+      $out[] = $normalized;
+    }
+  }
+
+  return array_values(array_unique($out));
+}
+
+function ll706_auth_api_normalize_dashboard_form_config($config, $touch_updated_at = false, $default_audience_when_missing = true, $unslash = false) {
+  $defaults = ll706_auth_api_dashboard_form_defaults();
+  $out = $defaults;
+
+  if (!is_array($config)) {
+    return $out;
+  }
+
+  if ($unslash) {
+    $config = wp_unslash($config);
+  }
+
+  $out['enabled'] = ll706_auth_normalize_bool($config['enabled'] ?? false);
+  $out['title'] = sanitize_text_field((string) ($config['title'] ?? ''));
+  $out['subtitle'] = sanitize_textarea_field((string) ($config['subtitle'] ?? ''));
+
+  $button_title = sanitize_text_field((string) ($config['button_title'] ?? $defaults['button_title']));
+  $out['button_title'] = $button_title !== '' ? $button_title : $defaults['button_title'];
+
+  $out['url'] = esc_url_raw((string) ($config['url'] ?? ''));
+  $out['audience'] = array_key_exists('audience', $config)
+    ? ll706_auth_api_sanitize_dashboard_form_audience($config['audience'], false)
+    : ($default_audience_when_missing ? $defaults['audience'] : []);
+
+  $out['updated_at'] = sanitize_text_field((string) ($config['updated_at'] ?? ''));
+  if ($touch_updated_at) {
+    $out['updated_at'] = gmdate('Y-m-d\TH:i:s\Z');
+  }
+
+  return $out;
+}
+
+function ll706_auth_api_sanitize_dashboard_form_config($config) {
+  return ll706_auth_api_normalize_dashboard_form_config($config, true, false, true);
+}
+
+function ll706_auth_api_get_dashboard_form_config() {
+  $saved = get_option('ll706_dashboard_form_config', []);
+  return ll706_auth_api_normalize_dashboard_form_config($saved, false, true, false);
+}
+
+function ll706_auth_api_is_valid_dashboard_form_url($url) {
+  $url = esc_url_raw((string) $url);
+  if ($url === '') {
+    return false;
+  }
+
+  $parts = wp_parse_url($url);
+  if (!is_array($parts) || empty($parts['scheme']) || empty($parts['host'])) {
+    return false;
+  }
+
+  $scheme = strtolower((string) $parts['scheme']);
+  if (!in_array($scheme, ['http', 'https'], true)) {
+    return false;
+  }
+
+  return (bool) filter_var($url, FILTER_VALIDATE_URL);
+}
+
+function ll706_auth_api_dashboard_form_disabled_response() {
+  return new WP_REST_Response(['enabled' => false], 200);
+}
+
+function ll706_auth_api_dashboard_form_response() {
+  $config = ll706_auth_api_get_dashboard_form_config();
+
+  if (empty($config['enabled']) || trim((string) $config['title']) === '' || !ll706_auth_api_is_valid_dashboard_form_url($config['url'])) {
+    return ll706_auth_api_dashboard_form_disabled_response();
+  }
+
+  return new WP_REST_Response([
+    'enabled'      => true,
+    'title'        => $config['title'],
+    'subtitle'     => $config['subtitle'],
+    'button_title' => $config['button_title'],
+    'url'          => $config['url'],
+    'audience'     => array_values($config['audience']),
+    'updated_at'   => $config['updated_at'] !== '' ? $config['updated_at'] : gmdate('Y-m-d\TH:i:s\Z'),
+  ], 200);
 }
 
 function ll706_auth_api_admin_page_url($tab = 'history', $args = []) {
@@ -691,6 +847,8 @@ function ll706_auth_api_render_overview_tab($opts) {
 }
 
 function ll706_auth_api_render_settings_tab($opts) {
+  $dashboard_form = ll706_auth_api_get_dashboard_form_config();
+  $dashboard_form_audiences = is_array($dashboard_form['audience']) ? $dashboard_form['audience'] : [];
 ?>
 <h2>Security Settings</h2>
 <form method="post" action="options.php">
@@ -727,6 +885,71 @@ Identifier embedded in login tokens. Change this if you reuse the plugin for ano
 </p>
 </td>
 </tr>
+
+</table>
+
+<h2>Dashboard Form Card</h2>
+<table class="form-table">
+
+<tr>
+<th>Enabled</th>
+<td>
+<label>
+<input type="checkbox" name="ll706_dashboard_form_config[enabled]" value="1" <?php checked(!empty($dashboard_form['enabled'])); ?> />
+Show the dashboard form card in the app.
+</label>
+</td>
+</tr>
+
+<tr>
+<th>Title</th>
+<td>
+<input type="text" name="ll706_dashboard_form_config[title]" value="<?php echo esc_attr($dashboard_form['title']); ?>" class="regular-text" />
+<p class="description">Required when the form card is enabled.</p>
+</td>
+</tr>
+
+<tr>
+<th>Subtitle</th>
+<td>
+<textarea name="ll706_dashboard_form_config[subtitle]" rows="3" class="large-text"><?php echo esc_textarea($dashboard_form['subtitle']); ?></textarea>
+</td>
+</tr>
+
+<tr>
+<th>Button Title</th>
+<td>
+<input type="text" name="ll706_dashboard_form_config[button_title]" value="<?php echo esc_attr($dashboard_form['button_title']); ?>" class="regular-text" />
+</td>
+</tr>
+
+<tr>
+<th>URL</th>
+<td>
+<input type="url" name="ll706_dashboard_form_config[url]" value="<?php echo esc_attr($dashboard_form['url']); ?>" class="regular-text" />
+<p class="description">Required when enabled. HTTP and HTTPS URLs are accepted; HTTPS is preferred.</p>
+</td>
+</tr>
+
+<tr>
+<th>Audience</th>
+<td>
+<?php foreach (ll706_auth_api_dashboard_form_audience_choices() as $value => $label) : ?>
+  <label style="display: block; margin-bottom: 4px;">
+    <input type="checkbox" name="ll706_dashboard_form_config[audience][]" value="<?php echo esc_attr($value); ?>" <?php checked(in_array($value, $dashboard_form_audiences, true)); ?> />
+    <?php echo esc_html($label); ?>
+  </label>
+<?php endforeach; ?>
+<p class="description">The app also recognizes compatible audience aliases such as all_members, administrator, executive, and chairman.</p>
+</td>
+</tr>
+
+<?php if (!empty($dashboard_form['updated_at'])) : ?>
+<tr>
+<th>Last Updated</th>
+<td><code><?php echo esc_html($dashboard_form['updated_at']); ?></code></td>
+</tr>
+<?php endif; ?>
 
 </table>
 
@@ -897,6 +1120,12 @@ function ll706_auth_api_save_user_access_controls($user_id) {
  * =====================================================
  */
 add_action('rest_api_init', function () {
+  register_rest_route('ll706/v1', '/dashboard-form', [
+    'methods'  => 'GET',
+    'callback' => 'll706_auth_api_dashboard_form_response',
+    'permission_callback' => '__return_true',
+  ]);
+
   register_rest_route('ll706/v1', '/login', [
     'methods'  => 'POST',
     'callback' => 'll706_auth_login',
