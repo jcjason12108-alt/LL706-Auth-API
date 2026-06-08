@@ -15,7 +15,7 @@ WordPress plugin that powers the LL706 mobile and web apps with hardened login, 
 - `/me` endpoint that validates tokens, rehydrates Ultimate Member fields, and returns the current user payload.
 - Public `/dashboard-form` endpoint for a remote-controlled Ask Bruno dashboard form card.
 - Per-user work-log storage with authenticated create, read, update, and soft-delete endpoints.
-- Admin settings page with separate Overview, Settings, and Login History tabs.
+- Admin settings page with separate Dashboard Form Card, Login History, Overview, and Settings tabs.
 - Per-user app login summary showing each member’s latest successful app login, token status, IP, and user agent.
 - CSV export for the last-login summary.
 - Automatic login log retention cleanup with a configurable number of days.
@@ -113,6 +113,11 @@ These controls write the meta key configured in the settings page so you can ren
   (replace `ll706_approved` if you changed the meta key).
 
 ## Changelog
+
+### 0.9.3
+
+- Moved Dashboard Form Card settings into their own first admin tab.
+- Split dashboard form settings into their own settings group so saving that tab cannot reset auth settings.
 
 ### 0.9.2
 

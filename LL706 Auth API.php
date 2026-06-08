@@ -3,7 +3,7 @@
  * Plugin Name: LL706 Auth API
  * Plugin URI: https://github.com/jcjason12108-alt/LL706-Auth-API/
  * Description: WordPress login + manual approval + JWT auth for LL706 mobile/web apps.
- * Version: 0.9.2
+ * Version: 0.9.3
  * Requires at least: 6.0
  * Tested up to: 7.0
  * Requires PHP: 7.4
@@ -75,7 +75,7 @@ add_action('admin_init', function () {
     'default' => []
   ]);
 
-  register_setting('ll706_auth_api', 'll706_dashboard_form_config', [
+  register_setting('ll706_dashboard_form', 'll706_dashboard_form_config', [
     'type' => 'array',
     'sanitize_callback' => 'll706_auth_api_sanitize_dashboard_form_config',
     'default' => ll706_auth_api_dashboard_form_defaults(),
@@ -83,6 +83,10 @@ add_action('admin_init', function () {
 });
 
 add_filter('option_page_capability_ll706_auth_api', function () {
+  return 'manage_options';
+});
+
+add_filter('option_page_capability_ll706_dashboard_form', function () {
   return 'manage_options';
 });
 
@@ -268,7 +272,7 @@ function ll706_auth_api_dashboard_form_response() {
   ], 200);
 }
 
-function ll706_auth_api_admin_page_url($tab = 'history', $args = []) {
+function ll706_auth_api_admin_page_url($tab = 'dashboard-form', $args = []) {
   $params = array_merge([
     'page' => 'll706-auth-api',
     'tab'  => $tab,
@@ -278,10 +282,10 @@ function ll706_auth_api_admin_page_url($tab = 'history', $args = []) {
 }
 
 function ll706_auth_api_get_current_tab() {
-  $tab = isset($_GET['tab']) ? sanitize_key(wp_unslash($_GET['tab'])) : 'history';
+  $tab = isset($_GET['tab']) ? sanitize_key(wp_unslash($_GET['tab'])) : 'dashboard-form';
 
-  if (!in_array($tab, ['overview', 'settings', 'history'], true)) {
-    return 'history';
+  if (!in_array($tab, ['dashboard-form', 'history', 'overview', 'settings'], true)) {
+    return 'dashboard-form';
   }
 
   return $tab;
@@ -766,6 +770,7 @@ function ll706_auth_api_settings_page() {
 <p>This plugin provides secure login for the LL706 mobile app and API clients.</p>
 
 <nav class="nav-tab-wrapper" style="margin-bottom: 20px;">
+  <a href="<?php echo esc_url(ll706_auth_api_admin_page_url('dashboard-form')); ?>" class="nav-tab <?php echo $tab === 'dashboard-form' ? 'nav-tab-active' : ''; ?>">Dashboard Form Card</a>
   <a href="<?php echo esc_url(ll706_auth_api_admin_page_url('history')); ?>" class="nav-tab <?php echo $tab === 'history' ? 'nav-tab-active' : ''; ?>">Login History</a>
   <a href="<?php echo esc_url(ll706_auth_api_admin_page_url('overview')); ?>" class="nav-tab <?php echo $tab === 'overview' ? 'nav-tab-active' : ''; ?>">Overview</a>
   <a href="<?php echo esc_url(ll706_auth_api_admin_page_url('settings')); ?>" class="nav-tab <?php echo $tab === 'settings' ? 'nav-tab-active' : ''; ?>">Settings</a>
@@ -773,6 +778,9 @@ function ll706_auth_api_settings_page() {
 
 <?php
 switch ($tab) {
+  case 'dashboard-form':
+    ll706_auth_api_render_dashboard_form_tab();
+    break;
   case 'settings':
     ll706_auth_api_render_settings_tab($opts);
     break;
@@ -780,8 +788,10 @@ switch ($tab) {
     ll706_auth_api_render_history_tab($login_summaries);
     break;
   case 'overview':
-  default:
     ll706_auth_api_render_overview_tab($opts);
+    break;
+  default:
+    ll706_auth_api_render_dashboard_form_tab();
     break;
 }
 ?>
@@ -853,49 +863,13 @@ function ll706_auth_api_render_overview_tab($opts) {
 <?php
 }
 
-function ll706_auth_api_render_settings_tab($opts) {
+function ll706_auth_api_render_dashboard_form_tab() {
   $dashboard_form = ll706_auth_api_get_dashboard_form_config();
   $dashboard_form_audiences = is_array($dashboard_form['audience']) ? $dashboard_form['audience'] : [];
 ?>
-<h2>Security Settings</h2>
-<form method="post" action="options.php">
-<?php settings_fields('ll706_auth_api'); ?>
-<table class="form-table">
-
-<tr>
-<th>JWT Secret</th>
-<td>
-<input type="text" name="ll706_auth_api_options[jwt_secret]" value="<?php echo esc_attr($opts['jwt_secret']); ?>" class="regular-text" />
-<p class="description">
-Secret used to sign login tokens. Changing this logs out all users.
-Leave blank to use WordPress’s built-in security key.
-</p>
-</td>
-</tr>
-
-<tr>
-<th>Approval Meta Key</th>
-<td>
-<input type="text" name="ll706_auth_api_options[approved_meta_key]" value="<?php echo esc_attr($opts['approved_meta_key']); ?>" class="regular-text" />
-<p class="description">
-User meta key that must be set to <code>1</code> before login is allowed.
-</p>
-</td>
-</tr>
-
-<tr>
-<th>Local Identifier</th>
-<td>
-<input type="text" name="ll706_auth_api_options[local_value]" value="<?php echo esc_attr($opts['local_value']); ?>" class="regular-text" />
-<p class="description">
-Identifier embedded in login tokens. Change this if you reuse the plugin for another Local.
-</p>
-</td>
-</tr>
-
-</table>
-
 <h2>Dashboard Form Card</h2>
+<form method="post" action="options.php">
+<?php settings_fields('ll706_dashboard_form'); ?>
 <table class="form-table">
 
 <tr>
@@ -957,6 +931,51 @@ Show the dashboard form card in the app.
 <td><code><?php echo esc_html($dashboard_form['updated_at']); ?></code></td>
 </tr>
 <?php endif; ?>
+
+</table>
+
+<?php submit_button(); ?>
+</form>
+<?php
+}
+
+function ll706_auth_api_render_settings_tab($opts) {
+?>
+<h2>Security Settings</h2>
+<form method="post" action="options.php">
+<?php settings_fields('ll706_auth_api'); ?>
+<table class="form-table">
+
+<tr>
+<th>JWT Secret</th>
+<td>
+<input type="text" name="ll706_auth_api_options[jwt_secret]" value="<?php echo esc_attr($opts['jwt_secret']); ?>" class="regular-text" />
+<p class="description">
+Secret used to sign login tokens. Changing this logs out all users.
+Leave blank to use WordPress’s built-in security key.
+</p>
+</td>
+</tr>
+
+<tr>
+<th>Approval Meta Key</th>
+<td>
+<input type="text" name="ll706_auth_api_options[approved_meta_key]" value="<?php echo esc_attr($opts['approved_meta_key']); ?>" class="regular-text" />
+<p class="description">
+User meta key that must be set to <code>1</code> before login is allowed.
+</p>
+</td>
+</tr>
+
+<tr>
+<th>Local Identifier</th>
+<td>
+<input type="text" name="ll706_auth_api_options[local_value]" value="<?php echo esc_attr($opts['local_value']); ?>" class="regular-text" />
+<p class="description">
+Identifier embedded in login tokens. Change this if you reuse the plugin for another Local.
+</p>
+</td>
+</tr>
 
 </table>
 
