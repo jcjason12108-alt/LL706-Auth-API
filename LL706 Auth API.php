@@ -3,7 +3,7 @@
  * Plugin Name: LL706 Auth API
  * Plugin URI: https://github.com/jcjason12108-alt/LL706-Auth-API/
  * Description: WordPress login + manual approval + JWT auth for LL706 mobile/web apps.
- * Version: 0.9.1
+ * Version: 0.9.2
  * Requires at least: 6.0
  * Tested up to: 7.0
  * Requires PHP: 7.4
@@ -24,9 +24,7 @@ $ll706_auth_api_update_checker = \YahnisElsts\PluginUpdateChecker\v5\PucFactory:
 );
 $ll706_auth_api_update_checker->setBranch('main');
 
-$ll706_auth_api_github_token = defined('PLUGIN_UPDATE_GITHUB_TOKEN')
-  ? PLUGIN_UPDATE_GITHUB_TOKEN
-  : getenv('PLUGIN_UPDATE_GITHUB_TOKEN');
+$ll706_auth_api_github_token = ll706_auth_api_get_github_update_token();
 
 if (!empty($ll706_auth_api_github_token)) {
   $ll706_auth_api_update_checker->setAuthentication($ll706_auth_api_github_token);
@@ -41,6 +39,15 @@ add_filter(
 
 if (!defined('LL706_WORK_LOG_DB_VERSION')) {
   define('LL706_WORK_LOG_DB_VERSION', '1.0.0');
+}
+
+function ll706_auth_api_get_github_update_token() {
+  if (defined('LL706_AUTH_API_GITHUB_TOKEN') && LL706_AUTH_API_GITHUB_TOKEN !== '') {
+    return LL706_AUTH_API_GITHUB_TOKEN;
+  }
+
+  $env_token = getenv('LL706_AUTH_API_GITHUB_TOKEN');
+  return is_string($env_token) ? trim($env_token) : '';
 }
 
 register_activation_hook(__FILE__, 'll706_auth_api_activate');

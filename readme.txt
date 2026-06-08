@@ -4,7 +4,7 @@ Tags: authentication, jwt, rest api, member approval
 Requires at least: 6.0
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 0.9.1
+Stable tag: 0.9.2
 License: GPL-2.0-or-later
 
 WordPress login, manual approval, JWT auth, and work-log REST endpoints for LL706 mobile and web apps.
@@ -25,11 +25,15 @@ LL706 Auth API powers LL706 mobile and web app authentication with hardened logi
 
 Updates are checked from the `main` branch of `https://github.com/jcjason12108-alt/LL706-Auth-API/` using Plugin Update Checker.
 
-= Does a private GitHub repository token work? =
+= Does a GitHub repository token work? =
 
-Yes. Define `PLUGIN_UPDATE_GITHUB_TOKEN` as a PHP constant or environment variable and the updater will authenticate GitHub requests with it.
+Yes. Define `LL706_AUTH_API_GITHUB_TOKEN` as a PHP constant or environment variable and the updater will authenticate GitHub requests with it. This can help if GitHub returns 403 for the live server.
 
 == Changelog ==
+
+= 0.9.2 =
+* Switched updater authentication to the plugin-specific `LL706_AUTH_API_GITHUB_TOKEN`.
+* Stopped using the generic `PLUGIN_UPDATE_GITHUB_TOKEN` value so unrelated tokens cannot trigger GitHub API 403 errors.
 
 = 0.9.1 =
 * Added remote-controlled Ask Bruno dashboard form-card settings.
@@ -45,7 +49,7 @@ Yes. Define `PLUGIN_UPDATE_GITHUB_TOKEN` as a PHP constant or environment variab
 = 0.8.3 =
 * Added Plugin Update Checker 5.6 for GitHub-based automatic updates.
 * Configured branch-only update detection from the `main` branch.
-* Added optional GitHub token support through `PLUGIN_UPDATE_GITHUB_TOKEN`.
+* Added optional GitHub token support.
 
 = 0.8.2 =
 * Added login history retention, CSV export, and per-user work-log API support.
