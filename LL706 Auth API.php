@@ -3,7 +3,7 @@
  * Plugin Name: LL706 Auth API
  * Plugin URI: https://github.com/jcjason12108-alt/LL706-Auth-API/
  * Description: WordPress login + manual approval + JWT auth for LL706 mobile/web apps.
- * Version: 0.9.5
+ * Version: 0.9.6
  * Requires at least: 6.0
  * Tested up to: 7.0
  * Requires PHP: 7.4
@@ -24,6 +24,12 @@ $ll706_auth_api_update_checker = \YahnisElsts\PluginUpdateChecker\v5\PucFactory:
 );
 $ll706_auth_api_update_checker->setBranch('main');
 
+$ll706_auth_api_github_token = ll706_auth_api_get_github_update_token();
+
+if (!empty($ll706_auth_api_github_token)) {
+  $ll706_auth_api_update_checker->setAuthentication($ll706_auth_api_github_token);
+}
+
 add_filter(
   $ll706_auth_api_update_checker->getUniqueName('vcs_update_detection_strategies'),
   static function (array $strategies): array {
@@ -33,6 +39,24 @@ add_filter(
 
 if (!defined('LL706_WORK_LOG_DB_VERSION')) {
   define('LL706_WORK_LOG_DB_VERSION', '1.0.0');
+}
+
+function ll706_auth_api_get_github_update_token() {
+  if (defined('LL706_AUTH_API_GITHUB_TOKEN') && LL706_AUTH_API_GITHUB_TOKEN !== '') {
+    return trim((string) LL706_AUTH_API_GITHUB_TOKEN);
+  }
+
+  $plugin_token = getenv('LL706_AUTH_API_GITHUB_TOKEN');
+  if (is_string($plugin_token) && trim($plugin_token) !== '') {
+    return trim($plugin_token);
+  }
+
+  if (defined('PLUGIN_UPDATE_GITHUB_TOKEN') && PLUGIN_UPDATE_GITHUB_TOKEN !== '') {
+    return trim((string) PLUGIN_UPDATE_GITHUB_TOKEN);
+  }
+
+  $shared_token = getenv('PLUGIN_UPDATE_GITHUB_TOKEN');
+  return is_string($shared_token) ? trim($shared_token) : '';
 }
 
 register_activation_hook(__FILE__, 'll706_auth_api_activate');
@@ -297,10 +321,19 @@ function ll706_auth_work_logs_table_name() {
   return $wpdb->prefix . 'll706_work_logs';
 }
 
-function ll706_auth_api_get_table_count($table_name, $where_sql = '1=1') {
+function ll706_auth_api_get_table_count($table_name) {
   global $wpdb;
 
-  return (int) $wpdb->get_var("SELECT COUNT(*) FROM {$table_name} WHERE {$where_sql}");
+  $allowed_tables = [
+    ll706_auth_api_log_table_name(),
+    ll706_auth_work_logs_table_name(),
+  ];
+
+  if (!in_array($table_name, $allowed_tables, true)) {
+    return 0;
+  }
+
+  return (int) $wpdb->get_var("SELECT COUNT(*) FROM {$table_name}");
 }
 
 function ll706_auth_maybe_upgrade_work_log_db() {

@@ -106,13 +106,19 @@ These controls write the meta key configured in the settings page so you can ren
 
 - Lint PHP before committing: `php -l 'LL706 Auth API.php'`.
 - GitHub update checks require the repository root to contain `LL706 Auth API.php` directly, not inside an extra nested plugin folder.
-- The updater does not use a GitHub token because this repository is public. If GitHub returns 403 on a live site, manually upload the latest ZIP once so the installed updater no longer sends stale server tokens.
+- If GitHub returns 403 during update checks, define `LL706_AUTH_API_GITHUB_TOKEN` as a fine-grained GitHub token with read access to this repository. The generic `PLUGIN_UPDATE_GITHUB_TOKEN` constant or environment variable is also supported as a fallback.
 - To force all tokens invalid, bump the `token_version` option from the settings page.
 - Need to bulk approve legacy members? With WP‑CLI you can run:  
   `wp user list --field=ID | xargs -I % wp user meta update % ll706_approved 1`
   (replace `ll706_approved` if you changed the meta key).
 
 ## Changelog
+
+### 0.9.6
+
+- Restored optional GitHub updater token support, preferring `LL706_AUTH_API_GITHUB_TOKEN` and falling back to `PLUGIN_UPDATE_GITHUB_TOKEN`.
+- Updated WordPress compatibility metadata to 7.0.
+- Tightened login/work-log table count queries to known plugin tables only.
 
 ### 0.9.5
 
