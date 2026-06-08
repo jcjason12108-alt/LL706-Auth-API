@@ -4,7 +4,7 @@ Tags: authentication, jwt, rest api, member approval
 Requires at least: 6.0
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 0.9.3
+Stable tag: 0.9.4
 License: GPL-2.0-or-later
 
 WordPress login, manual approval, JWT auth, and work-log REST endpoints for LL706 mobile and web apps.
@@ -25,11 +25,14 @@ LL706 Auth API powers LL706 mobile and web app authentication with hardened logi
 
 Updates are checked from the `main` branch of `https://github.com/jcjason12108-alt/LL706-Auth-API/` using Plugin Update Checker.
 
-= Does a GitHub repository token work? =
+= Does the updater need a GitHub token? =
 
-Yes. Define `LL706_AUTH_API_GITHUB_TOKEN` as a PHP constant or environment variable and the updater will authenticate GitHub requests with it. This can help if GitHub returns 403 for the live server.
+No. This repository is public, so the updater intentionally avoids GitHub authentication. If GitHub returns 403 on a live site, manually upload the latest ZIP once so the installed updater no longer sends stale server tokens.
 
 == Changelog ==
+
+= 0.9.4 =
+* Removed GitHub updater authentication for this public repository to avoid stale server tokens causing GitHub API 403 errors.
 
 = 0.9.3 =
 * Moved Dashboard Form Card settings into their own first admin tab.
