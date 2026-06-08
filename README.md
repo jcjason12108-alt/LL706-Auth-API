@@ -114,6 +114,10 @@ These controls write the meta key configured in the settings page so you can ren
 
 ## Changelog
 
+### 0.9.5
+
+- Version bump to verify the public GitHub updater path after removing updater authentication.
+
 ### 0.9.4
 
 - Removed GitHub updater authentication for this public repository to avoid stale server tokens causing GitHub API 403 errors.

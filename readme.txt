@@ -4,7 +4,7 @@ Tags: authentication, jwt, rest api, member approval
 Requires at least: 6.0
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 0.9.4
+Stable tag: 0.9.5
 License: GPL-2.0-or-later
 
 WordPress login, manual approval, JWT auth, and work-log REST endpoints for LL706 mobile and web apps.
@@ -30,6 +30,9 @@ Updates are checked from the `main` branch of `https://github.com/jcjason12108-a
 No. This repository is public, so the updater intentionally avoids GitHub authentication. If GitHub returns 403 on a live site, manually upload the latest ZIP once so the installed updater no longer sends stale server tokens.
 
 == Changelog ==
+
+= 0.9.5 =
+* Version bump to verify the public GitHub updater path after removing updater authentication.
 
 = 0.9.4 =
 * Removed GitHub updater authentication for this public repository to avoid stale server tokens causing GitHub API 403 errors.
