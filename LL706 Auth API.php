@@ -3,7 +3,7 @@
  * Plugin Name: LL706 Auth API
  * Plugin URI: https://github.com/jcjason12108-alt/LL706-Auth-API/
  * Description: WordPress login + manual approval + JWT auth for LL706 mobile/web apps.
- * Version: 0.9.6
+ * Version: 0.9.7
  * Requires at least: 6.0
  * Tested up to: 7.0
  * Requires PHP: 7.4
@@ -1647,6 +1647,10 @@ function ll706_auth_get_current_user_from_request(WP_REST_Request $req) {
   $user_id = isset($payload['data']['user_id']) ? (int) $payload['data']['user_id'] : 0;
   if ($user_id < 1 || !get_user_by('id', $user_id)) {
     return new WP_Error('invalid_user', 'The user for this token could not be found.', ['status' => 401]);
+  }
+
+  if (!ll706_auth_api_is_user_approved($user_id)) {
+    return new WP_Error('access_blocked', 'App access for this user has been blocked.', ['status' => 403]);
   }
 
   return $payload;

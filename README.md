@@ -114,6 +114,11 @@ These controls write the meta key configured in the settings page so you can ren
 
 ## Changelog
 
+### 0.9.7
+
+- Recheck user approval on every authenticated REST request so blocking a user takes effect immediately.
+- Updated the bundled Plugin Update Checker library from 5.6 to 5.7.
+
 ### 0.9.6
 
 - Restored optional GitHub updater token support, preferring `LL706_AUTH_API_GITHUB_TOKEN` and falling back to `PLUGIN_UPDATE_GITHUB_TOKEN`.
