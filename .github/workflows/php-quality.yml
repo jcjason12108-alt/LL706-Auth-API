@@ -1,0 +1,90 @@
+name: PHP quality
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  compatibility:
+    name: PHP ${{ matrix.php-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php-version:
+          - '7.4'
+          - '8.4'
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php-version }}
+          coverage: none
+          tools: composer:v2
+
+      - name: Verify plugin entry files begin with PHP
+        shell: bash
+        run: |
+          set -euo pipefail
+          entry_files=()
+          while IFS= read -r entry_file; do
+            entry_files+=("$entry_file")
+          done < <(
+            grep -RIl \
+              --include='*.php' \
+              --exclude-dir='.git' \
+              --exclude-dir='plugin-update-checker' \
+              -E '^[[:space:]]*\*?[[:space:]]*Plugin Name:' \
+              .
+          )
+
+          if [[ ${#entry_files[@]} -eq 0 ]]; then
+            echo 'No WordPress plugin entry file was found.' >&2
+            exit 1
+          fi
+
+          for entry_file in "${entry_files[@]}"; do
+            if [[ "$(head -c 5 "$entry_file")" != '<?php' ]]; then
+              echo "$entry_file emits bytes before its opening PHP tag." >&2
+              exit 1
+            fi
+          done
+
+      - name: Lint PHP files
+        shell: bash
+        run: |
+          set -euo pipefail
+          find . -type f -name '*.php' -not -path './.git/*' -print0 \
+            | xargs -0 -n 1 php -l
+
+      - name: Install PHP compatibility rules
+        shell: bash
+        run: |
+          set -euo pipefail
+          composer global config allow-plugins.dealerdirect/phpcodesniffer-composer-installer true
+          composer global require --no-interaction --no-progress --prefer-dist \
+            'wp-coding-standards/wpcs:^3' \
+            'phpcompatibility/phpcompatibility-wp:^2' \
+            'dealerdirect/phpcodesniffer-composer-installer:^1'
+
+      - name: Check PHP 7.4+ compatibility
+        shell: bash
+        run: |
+          set -euo pipefail
+          phpcs_bin="$(composer global config bin-dir --absolute)/phpcs"
+          "$phpcs_bin" \
+            -q \
+            --standard=PHPCompatibilityWP \
+            --runtime-set testVersion 7.4- \
+            --extensions=php \
+            --ignore='*/plugin-update-checker/*' \
+            .
