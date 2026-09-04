@@ -3,7 +3,7 @@
  * Plugin Name: LL706 Auth API
  * Plugin URI: https://github.com/jcjason12108-alt/LL706-Auth-API/
  * Description: WordPress login + manual approval + JWT auth for LL706 mobile/web apps.
- * Version: 0.9.8
+ * Version: 0.9.9
  * Requires at least: 6.0
  * Tested up to: 7.0
  * Requires PHP: 7.4
@@ -293,10 +293,27 @@ function ll706_auth_api_dashboard_form_response() {
 
 function ll706_auth_api_login_info_card_defaults() {
   return [
-    'enabled'      => false,
-    'content_html' => '',
-    'updated_at'   => '',
+    'enabled'          => false,
+    'content_html'     => '',
+    'background_color' => '#ffffff',
+    'scroll_enabled'   => false,
+    'scroll_height'    => 180,
+    'updated_at'       => '',
   ];
+}
+
+function ll706_auth_api_login_info_card_contrast_color($background_color) {
+  $background_color = sanitize_hex_color((string) $background_color);
+  if (!$background_color) {
+    return '#111111';
+  }
+
+  $red = hexdec(substr($background_color, 1, 2));
+  $green = hexdec(substr($background_color, 3, 2));
+  $blue = hexdec(substr($background_color, 5, 2));
+  $brightness = (($red * 299) + ($green * 587) + ($blue * 114)) / 1000;
+
+  return $brightness >= 150 ? '#111111' : '#ffffff';
 }
 
 function ll706_auth_api_login_info_card_allowed_html() {
@@ -362,6 +379,10 @@ function ll706_auth_api_normalize_login_info_card_config($config, $touch_updated
 
   $out['enabled'] = ll706_auth_normalize_bool($config['enabled'] ?? false);
   $out['content_html'] = ll706_auth_api_sanitize_login_info_card_html($config['content_html'] ?? '');
+  $background_color = sanitize_hex_color((string) ($config['background_color'] ?? ''));
+  $out['background_color'] = $background_color ?: $out['background_color'];
+  $out['scroll_enabled'] = ll706_auth_normalize_bool($config['scroll_enabled'] ?? false);
+  $out['scroll_height'] = max(100, min(500, absint($config['scroll_height'] ?? $out['scroll_height'])));
   $out['updated_at'] = sanitize_text_field((string) ($config['updated_at'] ?? ''));
 
   if ($touch_updated_at) {
@@ -390,10 +411,13 @@ function ll706_auth_api_login_info_card_response() {
     ], 200);
   } else {
     $response = new WP_REST_Response([
-      'enabled'        => true,
-      'content_html'   => ll706_auth_api_sanitize_login_info_card_html($config['content_html']),
-      'updated_at'     => $config['updated_at'] !== '' ? $config['updated_at'] : gmdate('Y-m-d\TH:i:s\Z'),
-      'schema_version' => 1,
+      'enabled'          => true,
+      'content_html'     => ll706_auth_api_sanitize_login_info_card_html($config['content_html']),
+      'background_color' => $config['background_color'],
+      'scroll_enabled'   => (bool) $config['scroll_enabled'],
+      'scroll_height'    => (int) $config['scroll_height'],
+      'updated_at'       => $config['updated_at'] !== '' ? $config['updated_at'] : gmdate('Y-m-d\TH:i:s\Z'),
+      'schema_version'   => 1,
     ], 200);
   }
 
@@ -1093,6 +1117,14 @@ Show the dashboard form card in the app.
 
 function ll706_auth_api_render_login_info_card_tab() {
   $login_info = ll706_auth_api_get_login_info_card_config();
+  $default_text_color = ll706_auth_api_login_info_card_contrast_color($login_info['background_color']);
+  $default_link_color = $default_text_color === '#ffffff' ? '#d4af37' : '#0066cc';
+  $editor_content_style = sprintf(
+    'body { background: %1$s; color: %2$s; font-family: -apple-system, BlinkMacSystemFont, Arial, sans-serif; padding: 12px; } a { color: %3$s; text-decoration: underline; }',
+    $login_info['background_color'],
+    $default_text_color,
+    $default_link_color
+  );
 ?>
 <h2>Login Information Card</h2>
 <p>Publish formatted information on the iOS and Android login screens. Only text formatted as a link will be clickable.</p>
@@ -1108,6 +1140,15 @@ function ll706_auth_api_render_login_info_card_tab() {
 <input type="checkbox" name="ll706_login_info_card_config[enabled]" value="1" <?php checked(!empty($login_info['enabled'])); ?> />
 Show the Login Information Card in supported AskBruno apps.
 </label>
+</td>
+</tr>
+
+<tr>
+<th><label for="ll706_login_info_background_color">Card Background</label></th>
+<td>
+<input type="color" id="ll706_login_info_background_color" name="ll706_login_info_card_config[background_color]" value="<?php echo esc_attr($login_info['background_color']); ?>" />
+<code style="margin-left: 8px;"><?php echo esc_html($login_info['background_color']); ?></code>
+<p class="description">Defaults to white. Save changes to apply the selected background to the editor preview and supported apps.</p>
 </td>
 </tr>
 
@@ -1130,12 +1171,32 @@ wp_editor(
       'block_formats'   => 'Paragraph=p;Heading 2=h2;Heading 3=h3;Heading 4=h4',
       'font_formats'    => 'Arial=Arial,Helvetica,sans-serif;Courier New=Courier New,Courier,monospace;Georgia=Georgia,serif;Helvetica=Helvetica,Arial,sans-serif;Times New Roman=Times New Roman,Times,serif;Verdana=Verdana,Geneva,sans-serif',
       'fontsize_formats' => '12px 14px 16px 18px 20px 24px 28px 32px',
-      'content_style'   => 'body { background: #1c1c1e; color: #ffffff; font-family: -apple-system, BlinkMacSystemFont, Arial, sans-serif; padding: 12px; } a { color: #d4af37; text-decoration: underline; }',
+      'content_style'   => $editor_content_style,
     ],
   ]
 );
 ?>
 <p class="description">Use the toolbar for headings, font, size, color, alignment, lists, and links. Images, video, forms, scripts, and embedded content are removed for security.</p>
+</td>
+</tr>
+
+<tr>
+<th>Scrollable Card</th>
+<td>
+<label>
+<input type="checkbox" name="ll706_login_info_card_config[scroll_enabled]" value="1" <?php checked(!empty($login_info['scroll_enabled'])); ?> />
+Keep the card at a fixed height and allow its information to scroll.
+</label>
+<p class="description">When unchecked, the card expands to show all information and the full login screen scrolls normally.</p>
+</td>
+</tr>
+
+<tr>
+<th><label for="ll706_login_info_scroll_height">Scrollable Height</label></th>
+<td>
+<input type="number" id="ll706_login_info_scroll_height" name="ll706_login_info_card_config[scroll_height]" value="<?php echo esc_attr($login_info['scroll_height']); ?>" min="100" max="500" step="10" class="small-text" />
+<span>points/pixels</span>
+<p class="description">Used only when Scrollable Card is enabled. Allowed range: 100–500.</p>
 </td>
 </tr>
 
@@ -1154,7 +1215,8 @@ wp_editor(
 <?php if (ll706_auth_api_login_info_card_has_visible_content($login_info['content_html'])) : ?>
 <h3>Saved Card Preview</h3>
 <p class="description">This preview shows the last saved version. The apps add their own card spacing and link handling.</p>
-<div style="box-sizing: border-box; max-width: 520px; padding: 16px; border-radius: 16px; background: #1c1c1e; color: #ffffff; overflow-wrap: anywhere;">
+<style>#ll706-login-info-preview a { color: <?php echo esc_attr($default_link_color); ?>; text-decoration: underline; }</style>
+<div id="ll706-login-info-preview" style="box-sizing: border-box; max-width: 520px; padding: 16px; border: 1px solid #dcdcde; border-radius: 16px; background: <?php echo esc_attr($login_info['background_color']); ?>; color: <?php echo esc_attr($default_text_color); ?>; overflow-wrap: anywhere;<?php echo !empty($login_info['scroll_enabled']) ? ' max-height: ' . esc_attr($login_info['scroll_height']) . 'px; overflow-y: auto;' : ''; ?>">
   <?php echo ll706_auth_api_sanitize_login_info_card_html($login_info['content_html']); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Sanitized with a narrow wp_kses allowlist. ?>
 </div>
 <?php endif; ?>
