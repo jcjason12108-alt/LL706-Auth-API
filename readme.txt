@@ -4,20 +4,20 @@ Tags: authentication, jwt, rest api, member approval
 Requires at least: 6.0
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 0.9.7
+Stable tag: 0.9.8
 License: GPL-2.0-or-later
 
 WordPress login, manual approval, JWT auth, and work-log REST endpoints for LL706 mobile and web apps.
 
 == Description ==
 
-LL706 Auth API powers LL706 mobile and web app authentication with hardened login, membership approval, JSON Web Token authentication, login history, a remote Ask Bruno dashboard form card, and member work-log endpoints.
+LL706 Auth API powers LL706 mobile and web app authentication with hardened login, membership approval, JSON Web Token authentication, login history, remote AskBruno dashboard and login information cards, and member work-log endpoints.
 
 == Installation ==
 
 1. Upload the `ll706-auth-api` folder to `wp-content/plugins/`.
 2. Activate LL706 Auth API from Plugins in the WordPress dashboard.
-3. Open Settings > LL706 Auth API to configure the JWT secret, approval meta key, dashboard form card, token lifetimes, and login log retention.
+3. Open Settings > LL706 Auth API to configure the JWT secret, approval meta key, dashboard form card, login information card, token lifetimes, and login log retention.
 
 == Frequently Asked Questions ==
 
@@ -30,6 +30,11 @@ Updates are checked from the `main` branch of `https://github.com/jcjason12108-a
 Yes. Define `LL706_AUTH_API_GITHUB_TOKEN` as a PHP constant or environment variable and the updater will authenticate GitHub requests with it. The generic `PLUGIN_UPDATE_GITHUB_TOKEN` constant or environment variable is also supported as a fallback.
 
 == Changelog ==
+
+= 0.9.8 =
+* Added a separate Login Information Card settings tab with a rich-text editor and saved-card preview.
+* Added the public GET /wp-json/ll706/v1/login-info endpoint for supported AskBruno apps.
+* Restricted login-card content to sanitized formatting and safe links, with scripts and embedded content removed.
 
 = 0.9.7 =
 * Recheck user approval on every authenticated REST request so blocking a user takes effect immediately.

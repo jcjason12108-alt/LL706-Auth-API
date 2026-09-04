@@ -14,8 +14,9 @@ WordPress plugin that powers the LL706 mobile and web apps with hardened login, 
 - Member self‑registration endpoint that collects profile meta (Ultimate Member compatible) and queues the account for manual approval.
 - `/me` endpoint that validates tokens, rehydrates Ultimate Member fields, and returns the current user payload.
 - Public `/dashboard-form` endpoint for a remote-controlled Ask Bruno dashboard form card.
+- Public `/login-info` endpoint for a remote-controlled, sanitized rich-text card on the AskBruno login screen.
 - Per-user work-log storage with authenticated create, read, update, and soft-delete endpoints.
-- Admin settings page with separate Dashboard Form Card, Login History, Overview, and Settings tabs.
+- Admin settings page with separate Dashboard Form Card, Login Information Card, Login History, Overview, and Settings tabs.
 - Per-user app login summary showing each member’s latest successful app login, token status, IP, and user agent.
 - CSV export for the last-login summary.
 - Automatic login log retention cleanup with a configurable number of days.
@@ -27,7 +28,7 @@ WordPress plugin that powers the LL706 mobile and web apps with hardened login, 
 
 1. Copy `LL706 Auth API.php` into `wp-content/plugins/ll706-auth-api/` (or clone this repository there).
 2. In the WordPress dashboard, activate **LL706 Auth API** under *Plugins → Installed Plugins*.
-3. Open *Settings → LL706 Auth API* to configure the JWT secret, approval meta key, dashboard form card, token lifetimes, and login log retention. Changing the secret or the “Force Logout” button invalidates existing tokens.
+3. Open *Settings → LL706 Auth API* to configure the JWT secret, approval meta key, dashboard form card, login information card, token lifetimes, and login log retention. Changing the secret or the “Force Logout” button invalidates existing tokens.
 4. Use the *Overview* tab for built-in documentation and the *Login History* tab for recent app login activity and CSV export.
 
 ## REST API
@@ -39,6 +40,7 @@ All routes live under the namespace `ll706/v1`.
 | `/login` | `POST` | Authenticate an existing member, vet approval status, and return a JWT payload. | `username` (or email), `password` |
 | `/register` | `POST` | Create a pending member and store Ultimate Member profile meta. | `username`, `password`, `email`, `first_name`, `last_name`, `local_number`, `email_opt_in` plus optional address/phone/card fields |
 | `/dashboard-form` | `GET` | Return the public dashboard form-card configuration for the app. | None |
+| `/login-info` | `GET` | Return sanitized rich text for the public AskBruno Login Information Card. | None |
 | `/me` | `GET` | Validate a token and return the hydrated user payload. | `Authorization: Bearer <token>` header |
 | `/work-log` | `GET` | Return the authenticated member’s non-deleted work-log entries. | `Authorization: Bearer <token>` header |
 | `/work-log` | `POST` | Create a work-log entry for the authenticated member. | `Authorization: Bearer <token>` header plus `work_date`, `shift` (`1st`, `2nd`, or `3rd`; numeric `1`, `2`, and `3` are normalized), `work_items`, and optional `entry_uuid`, `doubled`, `supervisor`, `worked_with`, `notes` |
@@ -113,6 +115,12 @@ These controls write the meta key configured in the settings page so you can ren
   (replace `ll706_approved` if you changed the meta key).
 
 ## Changelog
+
+### 0.9.8
+
+- Added a separate Login Information Card settings tab with a rich-text editor and saved-card preview.
+- Added the public `GET /wp-json/ll706/v1/login-info` endpoint for supported AskBruno apps.
+- Restricted login-card content to sanitized formatting and safe links, with scripts and embedded content removed.
 
 ### 0.9.7
 
