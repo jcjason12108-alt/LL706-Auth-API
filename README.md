@@ -116,6 +116,12 @@ These controls write the meta key configured in the settings page so you can ren
 
 ## Changelog
 
+### 0.9.9
+
+- Changed the Login Information Card background default to white and added an administrator-selectable background color.
+- Added an optional scrollable card mode with a configurable 100–500 point/pixel maximum height.
+- Added background and scrolling fields to the public `/login-info` response.
+
 ### 0.9.8
 
 - Added a separate Login Information Card settings tab with a rich-text editor and saved-card preview.
