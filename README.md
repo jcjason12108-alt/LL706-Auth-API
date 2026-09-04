@@ -116,6 +116,11 @@ These controls write the meta key configured in the settings page so you can ren
 
 ## Changelog
 
+### 0.9.10
+
+- Replaced the manually scrollable Login Information Card option with an automatic right-to-left news ticker.
+- Added Slow, Normal, and Fast ticker speed choices to the administrator settings and public `/login-info` response.
+
 ### 0.9.9
 
 - Changed the Login Information Card background default to white and added an administrator-selectable background color.

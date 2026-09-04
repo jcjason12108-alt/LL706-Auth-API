@@ -3,7 +3,7 @@
  * Plugin Name: LL706 Auth API
  * Plugin URI: https://github.com/jcjason12108-alt/LL706-Auth-API/
  * Description: WordPress login + manual approval + JWT auth for LL706 mobile/web apps.
- * Version: 0.9.9
+ * Version: 0.9.10
  * Requires at least: 6.0
  * Tested up to: 7.0
  * Requires PHP: 7.4
@@ -296,10 +296,28 @@ function ll706_auth_api_login_info_card_defaults() {
     'enabled'          => false,
     'content_html'     => '',
     'background_color' => '#ffffff',
-    'scroll_enabled'   => false,
-    'scroll_height'    => 180,
+    'ticker_enabled'   => false,
+    'ticker_speed'     => 'normal',
     'updated_at'       => '',
   ];
+}
+
+function ll706_auth_api_login_info_card_ticker_speeds() {
+  return [
+    'slow'   => 'Slow',
+    'normal' => 'Normal',
+    'fast'   => 'Fast',
+  ];
+}
+
+function ll706_auth_api_login_info_card_ticker_duration($speed) {
+  $durations = [
+    'slow'   => 30,
+    'normal' => 20,
+    'fast'   => 12,
+  ];
+
+  return $durations[$speed] ?? $durations['normal'];
 }
 
 function ll706_auth_api_login_info_card_contrast_color($background_color) {
@@ -381,8 +399,11 @@ function ll706_auth_api_normalize_login_info_card_config($config, $touch_updated
   $out['content_html'] = ll706_auth_api_sanitize_login_info_card_html($config['content_html'] ?? '');
   $background_color = sanitize_hex_color((string) ($config['background_color'] ?? ''));
   $out['background_color'] = $background_color ?: $out['background_color'];
-  $out['scroll_enabled'] = ll706_auth_normalize_bool($config['scroll_enabled'] ?? false);
-  $out['scroll_height'] = max(100, min(500, absint($config['scroll_height'] ?? $out['scroll_height'])));
+  $out['ticker_enabled'] = ll706_auth_normalize_bool($config['ticker_enabled'] ?? false);
+  $ticker_speed = sanitize_key((string) ($config['ticker_speed'] ?? ''));
+  if (array_key_exists($ticker_speed, ll706_auth_api_login_info_card_ticker_speeds())) {
+    $out['ticker_speed'] = $ticker_speed;
+  }
   $out['updated_at'] = sanitize_text_field((string) ($config['updated_at'] ?? ''));
 
   if ($touch_updated_at) {
@@ -414,8 +435,8 @@ function ll706_auth_api_login_info_card_response() {
       'enabled'          => true,
       'content_html'     => ll706_auth_api_sanitize_login_info_card_html($config['content_html']),
       'background_color' => $config['background_color'],
-      'scroll_enabled'   => (bool) $config['scroll_enabled'],
-      'scroll_height'    => (int) $config['scroll_height'],
+      'ticker_enabled'   => (bool) $config['ticker_enabled'],
+      'ticker_speed'     => $config['ticker_speed'],
       'updated_at'       => $config['updated_at'] !== '' ? $config['updated_at'] : gmdate('Y-m-d\TH:i:s\Z'),
       'schema_version'   => 1,
     ], 200);
@@ -1119,6 +1140,7 @@ function ll706_auth_api_render_login_info_card_tab() {
   $login_info = ll706_auth_api_get_login_info_card_config();
   $default_text_color = ll706_auth_api_login_info_card_contrast_color($login_info['background_color']);
   $default_link_color = $default_text_color === '#ffffff' ? '#d4af37' : '#0066cc';
+  $ticker_duration = ll706_auth_api_login_info_card_ticker_duration($login_info['ticker_speed']);
   $editor_content_style = sprintf(
     'body { background: %1$s; color: %2$s; font-family: -apple-system, BlinkMacSystemFont, Arial, sans-serif; padding: 12px; } a { color: %3$s; text-decoration: underline; }',
     $login_info['background_color'],
@@ -1181,22 +1203,25 @@ wp_editor(
 </tr>
 
 <tr>
-<th>Scrollable Card</th>
+<th>News Ticker</th>
 <td>
 <label>
-<input type="checkbox" name="ll706_login_info_card_config[scroll_enabled]" value="1" <?php checked(!empty($login_info['scroll_enabled'])); ?> />
-Keep the card at a fixed height and allow its information to scroll.
+<input type="checkbox" name="ll706_login_info_card_config[ticker_enabled]" value="1" <?php checked(!empty($login_info['ticker_enabled'])); ?> />
+Automatically move the information from right to left across the card.
 </label>
-<p class="description">When unchecked, the card expands to show all information and the full login screen scrolls normally.</p>
+<p class="description">When unchecked, the card stays still and displays the information normally.</p>
 </td>
 </tr>
 
 <tr>
-<th><label for="ll706_login_info_scroll_height">Scrollable Height</label></th>
+<th><label for="ll706_login_info_ticker_speed">Ticker Speed</label></th>
 <td>
-<input type="number" id="ll706_login_info_scroll_height" name="ll706_login_info_card_config[scroll_height]" value="<?php echo esc_attr($login_info['scroll_height']); ?>" min="100" max="500" step="10" class="small-text" />
-<span>points/pixels</span>
-<p class="description">Used only when Scrollable Card is enabled. Allowed range: 100–500.</p>
+<select id="ll706_login_info_ticker_speed" name="ll706_login_info_card_config[ticker_speed]">
+<?php foreach (ll706_auth_api_login_info_card_ticker_speeds() as $speed => $label) : ?>
+  <option value="<?php echo esc_attr($speed); ?>" <?php selected($login_info['ticker_speed'], $speed); ?>><?php echo esc_html($label); ?></option>
+<?php endforeach; ?>
+</select>
+<p class="description">Used only when News Ticker is enabled. Normal is the default.</p>
 </td>
 </tr>
 
@@ -1215,9 +1240,17 @@ Keep the card at a fixed height and allow its information to scroll.
 <?php if (ll706_auth_api_login_info_card_has_visible_content($login_info['content_html'])) : ?>
 <h3>Saved Card Preview</h3>
 <p class="description">This preview shows the last saved version. The apps add their own card spacing and link handling.</p>
-<style>#ll706-login-info-preview a { color: <?php echo esc_attr($default_link_color); ?>; text-decoration: underline; }</style>
-<div id="ll706-login-info-preview" style="box-sizing: border-box; max-width: 520px; padding: 16px; border: 1px solid #dcdcde; border-radius: 16px; background: <?php echo esc_attr($login_info['background_color']); ?>; color: <?php echo esc_attr($default_text_color); ?>; overflow-wrap: anywhere;<?php echo !empty($login_info['scroll_enabled']) ? ' max-height: ' . esc_attr($login_info['scroll_height']) . 'px; overflow-y: auto;' : ''; ?>">
+<style>
+#ll706-login-info-preview a { color: <?php echo esc_attr($default_link_color); ?>; text-decoration: underline; }
+#ll706-login-info-preview.ll706-login-info-ticker { overflow: hidden; white-space: nowrap; }
+#ll706-login-info-preview .ll706-login-info-ticker-track { display: inline-block; min-width: max-content; padding-left: 100%; animation: ll706-login-info-ticker-preview <?php echo esc_attr($ticker_duration); ?>s linear infinite; }
+#ll706-login-info-preview .ll706-login-info-ticker-track > * { display: inline-block; margin: 0 2rem 0 0; }
+@keyframes ll706-login-info-ticker-preview { from { transform: translateX(0); } to { transform: translateX(-100%); } }
+</style>
+<div id="ll706-login-info-preview" class="<?php echo !empty($login_info['ticker_enabled']) ? 'll706-login-info-ticker' : ''; ?>" style="box-sizing: border-box; max-width: 520px; padding: 16px; border: 1px solid #dcdcde; border-radius: 16px; background: <?php echo esc_attr($login_info['background_color']); ?>; color: <?php echo esc_attr($default_text_color); ?>; overflow-wrap: anywhere;">
+  <?php if (!empty($login_info['ticker_enabled'])) : ?><div class="ll706-login-info-ticker-track"><?php endif; ?>
   <?php echo ll706_auth_api_sanitize_login_info_card_html($login_info['content_html']); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Sanitized with a narrow wp_kses allowlist. ?>
+  <?php if (!empty($login_info['ticker_enabled'])) : ?></div><?php endif; ?>
 </div>
 <?php endif; ?>
 <?php
