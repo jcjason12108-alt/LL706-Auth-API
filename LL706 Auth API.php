@@ -3,7 +3,7 @@
  * Plugin Name: LL706 Auth API
  * Plugin URI: https://github.com/jcjason12108-alt/LL706-Auth-API/
  * Description: WordPress login + manual approval + JWT auth for LL706 mobile/web apps.
- * Version: 0.9.7
+ * Version: 0.9.8
  * Requires at least: 6.0
  * Tested up to: 7.0
  * Requires PHP: 7.4
@@ -89,6 +89,12 @@ add_action('admin_init', function () {
     'sanitize_callback' => 'll706_auth_api_sanitize_dashboard_form_config',
     'default' => ll706_auth_api_dashboard_form_defaults(),
   ]);
+
+  register_setting('ll706_login_info_card', 'll706_login_info_card_config', [
+    'type' => 'array',
+    'sanitize_callback' => 'll706_auth_api_sanitize_login_info_card_config',
+    'default' => ll706_auth_api_login_info_card_defaults(),
+  ]);
 });
 
 add_filter('option_page_capability_ll706_auth_api', function () {
@@ -96,6 +102,10 @@ add_filter('option_page_capability_ll706_auth_api', function () {
 });
 
 add_filter('option_page_capability_ll706_dashboard_form', function () {
+  return 'manage_options';
+});
+
+add_filter('option_page_capability_ll706_login_info_card', function () {
   return 'manage_options';
 });
 
@@ -281,6 +291,118 @@ function ll706_auth_api_dashboard_form_response() {
   ], 200);
 }
 
+function ll706_auth_api_login_info_card_defaults() {
+  return [
+    'enabled'      => false,
+    'content_html' => '',
+    'updated_at'   => '',
+  ];
+}
+
+function ll706_auth_api_login_info_card_allowed_html() {
+  $styled = [
+    'style' => true,
+  ];
+
+  return [
+    'p'          => $styled,
+    'br'         => [],
+    'strong'     => $styled,
+    'b'          => $styled,
+    'em'         => $styled,
+    'i'          => $styled,
+    'u'          => $styled,
+    's'          => $styled,
+    'span'       => $styled,
+    'a'          => [
+      'href'  => true,
+      'title' => true,
+      'style' => true,
+    ],
+    'ul'         => $styled,
+    'ol'         => $styled,
+    'li'         => $styled,
+    'h2'         => $styled,
+    'h3'         => $styled,
+    'h4'         => $styled,
+    'blockquote' => $styled,
+  ];
+}
+
+function ll706_auth_api_sanitize_login_info_card_html($html) {
+  if (!is_string($html) && !is_numeric($html)) {
+    return '';
+  }
+
+  return wp_kses(
+    (string) $html,
+    ll706_auth_api_login_info_card_allowed_html(),
+    ['http', 'https', 'mailto', 'tel']
+  );
+}
+
+function ll706_auth_api_login_info_card_has_visible_content($html) {
+  $text = wp_strip_all_tags((string) $html, true);
+  $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, get_bloginfo('charset') ?: 'UTF-8');
+  $text = preg_replace('/\x{00A0}/u', ' ', $text);
+
+  return trim((string) $text) !== '';
+}
+
+function ll706_auth_api_normalize_login_info_card_config($config, $touch_updated_at = false, $unslash = false) {
+  $out = ll706_auth_api_login_info_card_defaults();
+
+  if (!is_array($config)) {
+    return $out;
+  }
+
+  if ($unslash) {
+    $config = wp_unslash($config);
+  }
+
+  $out['enabled'] = ll706_auth_normalize_bool($config['enabled'] ?? false);
+  $out['content_html'] = ll706_auth_api_sanitize_login_info_card_html($config['content_html'] ?? '');
+  $out['updated_at'] = sanitize_text_field((string) ($config['updated_at'] ?? ''));
+
+  if ($touch_updated_at) {
+    $out['updated_at'] = gmdate('Y-m-d\TH:i:s\Z');
+  }
+
+  return $out;
+}
+
+function ll706_auth_api_sanitize_login_info_card_config($config) {
+  return ll706_auth_api_normalize_login_info_card_config($config, true, true);
+}
+
+function ll706_auth_api_get_login_info_card_config() {
+  $saved = get_option('ll706_login_info_card_config', []);
+  return ll706_auth_api_normalize_login_info_card_config($saved, false, false);
+}
+
+function ll706_auth_api_login_info_card_response() {
+  $config = ll706_auth_api_get_login_info_card_config();
+
+  if (empty($config['enabled']) || !ll706_auth_api_login_info_card_has_visible_content($config['content_html'])) {
+    $response = new WP_REST_Response([
+      'enabled'        => false,
+      'schema_version' => 1,
+    ], 200);
+  } else {
+    $response = new WP_REST_Response([
+      'enabled'        => true,
+      'content_html'   => ll706_auth_api_sanitize_login_info_card_html($config['content_html']),
+      'updated_at'     => $config['updated_at'] !== '' ? $config['updated_at'] : gmdate('Y-m-d\TH:i:s\Z'),
+      'schema_version' => 1,
+    ], 200);
+  }
+
+  $response->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+  $response->header('Pragma', 'no-cache');
+
+  return $response;
+}
+
 function ll706_auth_api_admin_page_url($tab = 'dashboard-form', $args = []) {
   $params = array_merge([
     'page' => 'll706-auth-api',
@@ -293,7 +415,7 @@ function ll706_auth_api_admin_page_url($tab = 'dashboard-form', $args = []) {
 function ll706_auth_api_get_current_tab() {
   $tab = isset($_GET['tab']) ? sanitize_key(wp_unslash($_GET['tab'])) : 'dashboard-form';
 
-  if (!in_array($tab, ['dashboard-form', 'history', 'overview', 'settings'], true)) {
+  if (!in_array($tab, ['dashboard-form', 'login-info', 'history', 'overview', 'settings'], true)) {
     return 'dashboard-form';
   }
 
@@ -789,6 +911,7 @@ function ll706_auth_api_settings_page() {
 
 <nav class="nav-tab-wrapper" style="margin-bottom: 20px;">
   <a href="<?php echo esc_url(ll706_auth_api_admin_page_url('dashboard-form')); ?>" class="nav-tab <?php echo $tab === 'dashboard-form' ? 'nav-tab-active' : ''; ?>">Dashboard Form Card</a>
+  <a href="<?php echo esc_url(ll706_auth_api_admin_page_url('login-info')); ?>" class="nav-tab <?php echo $tab === 'login-info' ? 'nav-tab-active' : ''; ?>">Login Information Card</a>
   <a href="<?php echo esc_url(ll706_auth_api_admin_page_url('history')); ?>" class="nav-tab <?php echo $tab === 'history' ? 'nav-tab-active' : ''; ?>">Login History</a>
   <a href="<?php echo esc_url(ll706_auth_api_admin_page_url('overview')); ?>" class="nav-tab <?php echo $tab === 'overview' ? 'nav-tab-active' : ''; ?>">Overview</a>
   <a href="<?php echo esc_url(ll706_auth_api_admin_page_url('settings')); ?>" class="nav-tab <?php echo $tab === 'settings' ? 'nav-tab-active' : ''; ?>">Settings</a>
@@ -798,6 +921,9 @@ function ll706_auth_api_settings_page() {
 switch ($tab) {
   case 'dashboard-form':
     ll706_auth_api_render_dashboard_form_tab();
+    break;
+  case 'login-info':
+    ll706_auth_api_render_login_info_card_tab();
     break;
   case 'settings':
     ll706_auth_api_render_settings_tab($opts);
@@ -863,6 +989,14 @@ function ll706_auth_api_render_overview_tab($opts) {
     <tr>
       <td><code>/register</code></td>
       <td>Creates a new pending member and stores profile fields for review.</td>
+    </tr>
+    <tr>
+      <td><code>/dashboard-form</code></td>
+      <td>Returns the remotely managed Dashboard Form Card configuration.</td>
+    </tr>
+    <tr>
+      <td><code>/login-info</code></td>
+      <td>Returns sanitized rich text for the public AskBruno Login Information Card.</td>
     </tr>
     <tr>
       <td><code>/me</code></td>
@@ -954,6 +1088,76 @@ Show the dashboard form card in the app.
 
 <?php submit_button(); ?>
 </form>
+<?php
+}
+
+function ll706_auth_api_render_login_info_card_tab() {
+  $login_info = ll706_auth_api_get_login_info_card_config();
+?>
+<h2>Login Information Card</h2>
+<p>Publish formatted information on the iOS and Android login screens. Only text formatted as a link will be clickable.</p>
+
+<form method="post" action="options.php">
+<?php settings_fields('ll706_login_info_card'); ?>
+<table class="form-table" role="presentation">
+
+<tr>
+<th>Enabled</th>
+<td>
+<label>
+<input type="checkbox" name="ll706_login_info_card_config[enabled]" value="1" <?php checked(!empty($login_info['enabled'])); ?> />
+Show the Login Information Card in supported AskBruno apps.
+</label>
+</td>
+</tr>
+
+<tr>
+<th><label for="ll706_login_info_card_editor">Information</label></th>
+<td>
+<?php
+wp_editor(
+  $login_info['content_html'],
+  'll706_login_info_card_editor',
+  [
+    'textarea_name' => 'll706_login_info_card_config[content_html]',
+    'textarea_rows' => 10,
+    'media_buttons' => false,
+    'teeny'         => false,
+    'quicktags'     => true,
+    'tinymce'       => [
+      'toolbar1'        => 'formatselect,fontselect,fontsizeselect,bold,italic,underline,forecolor,backcolor',
+      'toolbar2'        => 'alignleft,aligncenter,alignright,bullist,numlist,blockquote,link,unlink,undo,redo,removeformat',
+      'block_formats'   => 'Paragraph=p;Heading 2=h2;Heading 3=h3;Heading 4=h4',
+      'font_formats'    => 'Arial=Arial,Helvetica,sans-serif;Courier New=Courier New,Courier,monospace;Georgia=Georgia,serif;Helvetica=Helvetica,Arial,sans-serif;Times New Roman=Times New Roman,Times,serif;Verdana=Verdana,Geneva,sans-serif',
+      'fontsize_formats' => '12px 14px 16px 18px 20px 24px 28px 32px',
+      'content_style'   => 'body { background: #1c1c1e; color: #ffffff; font-family: -apple-system, BlinkMacSystemFont, Arial, sans-serif; padding: 12px; } a { color: #d4af37; text-decoration: underline; }',
+    ],
+  ]
+);
+?>
+<p class="description">Use the toolbar for headings, font, size, color, alignment, lists, and links. Images, video, forms, scripts, and embedded content are removed for security.</p>
+</td>
+</tr>
+
+<?php if (!empty($login_info['updated_at'])) : ?>
+<tr>
+<th>Last Updated</th>
+<td><code><?php echo esc_html($login_info['updated_at']); ?></code></td>
+</tr>
+<?php endif; ?>
+
+</table>
+
+<?php submit_button(); ?>
+</form>
+
+<?php if (ll706_auth_api_login_info_card_has_visible_content($login_info['content_html'])) : ?>
+<h3>Saved Card Preview</h3>
+<p class="description">This preview shows the last saved version. The apps add their own card spacing and link handling.</p>
+<div style="box-sizing: border-box; max-width: 520px; padding: 16px; border-radius: 16px; background: #1c1c1e; color: #ffffff; overflow-wrap: anywhere;">
+  <?php echo ll706_auth_api_sanitize_login_info_card_html($login_info['content_html']); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Sanitized with a narrow wp_kses allowlist. ?>
+</div>
+<?php endif; ?>
 <?php
 }
 
@@ -1167,6 +1371,12 @@ add_action('rest_api_init', function () {
   register_rest_route('ll706/v1', '/dashboard-form', [
     'methods'  => 'GET',
     'callback' => 'll706_auth_api_dashboard_form_response',
+    'permission_callback' => '__return_true',
+  ]);
+
+  register_rest_route('ll706/v1', '/login-info', [
+    'methods'  => 'GET',
+    'callback' => 'll706_auth_api_login_info_card_response',
     'permission_callback' => '__return_true',
   ]);
 
