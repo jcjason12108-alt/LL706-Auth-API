@@ -3,7 +3,7 @@
  * Plugin Name: LL706 Auth API
  * Plugin URI: https://github.com/jcjason12108-alt/LL706-Auth-API/
  * Description: WordPress login + manual approval + JWT auth for LL706 mobile/web apps.
- * Version: 0.9.12
+ * Version: 0.9.13
  * Requires at least: 6.0
  * Tested up to: 7.0
  * Requires PHP: 7.4
@@ -14,6 +14,10 @@
  */
 
 if (!defined('ABSPATH')) exit;
+
+if (!defined('LL706_AUTH_API_VERSION')) {
+  define('LL706_AUTH_API_VERSION', '0.9.13');
+}
 
 require_once __DIR__ . '/plugin-update-checker/plugin-update-checker.php';
 
@@ -118,6 +122,7 @@ add_filter('manage_users_custom_column', 'll706_auth_api_render_users_column', 1
 add_action('admin_post_ll706_toggle_access', 'll706_auth_api_handle_toggle_access');
 add_action('admin_post_ll706_clear_login_log', 'll706_auth_api_handle_clear_login_log');
 add_action('admin_post_ll706_export_login_summary', 'll706_auth_api_handle_export_login_summary');
+add_action('admin_post_ll706_auth_api_check_updates', 'll706_auth_api_handle_check_updates');
 add_action('admin_notices', 'll706_auth_api_access_notice');
 add_action('admin_notices', 'll706_auth_api_log_notice');
 add_action('plugins_loaded', 'll706_auth_api_maybe_create_log_table');
@@ -296,10 +301,21 @@ function ll706_auth_api_login_info_card_defaults() {
     'enabled'                => false,
     'content_html'           => '',
     'background_color'       => '#ffffff',
+    'background_style'       => 'solid',
     'transparent_background' => false,
     'ticker_enabled'         => false,
     'ticker_speed'           => 'normal',
+    'starts_at'              => '',
+    'expires_at'             => '',
     'updated_at'             => '',
+  ];
+}
+
+function ll706_auth_api_login_info_card_background_styles() {
+  return [
+    'transparent' => 'Transparent',
+    'glass'       => 'Glass (Light Tint)',
+    'solid'       => 'Solid Color',
   ];
 }
 
@@ -348,6 +364,80 @@ function ll706_auth_api_login_info_card_ticker_duration($speed) {
   ];
 
   return $durations[$speed] ?? $durations['normal'];
+}
+
+function ll706_auth_api_login_info_card_is_ticker_eligible($html) {
+  $html = (string) $html;
+
+  if (preg_match('/<(?:h[2-4]|ul|ol|li|blockquote|br)\b/i', $html)) {
+    return false;
+  }
+
+  preg_match_all('/<p\b/i', $html, $paragraph_matches);
+  if (count($paragraph_matches[0]) > 1) {
+    return false;
+  }
+
+  $text = wp_strip_all_tags($html, true);
+  $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, get_bloginfo('charset') ?: 'UTF-8');
+  $text = trim((string) preg_replace('/\s+/u', ' ', $text));
+  $length = function_exists('mb_strlen') ? mb_strlen($text) : strlen($text);
+
+  return $text !== '' && $length <= 180;
+}
+
+function ll706_auth_api_normalize_login_info_card_datetime($value, $from_site_timezone = false) {
+  $value = trim(sanitize_text_field((string) $value));
+  if ($value === '') {
+    return '';
+  }
+
+  try {
+    if ($from_site_timezone) {
+      $datetime = DateTimeImmutable::createFromFormat('!Y-m-d\TH:i', $value, wp_timezone());
+      $errors = DateTimeImmutable::getLastErrors();
+      if (!$datetime || (is_array($errors) && ($errors['warning_count'] > 0 || $errors['error_count'] > 0))) {
+        return '';
+      }
+    } else {
+      $datetime = new DateTimeImmutable($value);
+    }
+
+    return $datetime->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d\TH:i:s\Z');
+  } catch (Exception $e) {
+    return '';
+  }
+}
+
+function ll706_auth_api_login_info_card_datetime_local_value($value) {
+  $normalized = ll706_auth_api_normalize_login_info_card_datetime($value, false);
+  if ($normalized === '') {
+    return '';
+  }
+
+  try {
+    return (new DateTimeImmutable($normalized))
+      ->setTimezone(wp_timezone())
+      ->format('Y-m-d\TH:i');
+  } catch (Exception $e) {
+    return '';
+  }
+}
+
+function ll706_auth_api_login_info_card_schedule_is_active($config, $timestamp = null) {
+  $timestamp = $timestamp === null ? time() : (int) $timestamp;
+  $starts_at = strtotime((string) ($config['starts_at'] ?? ''));
+  $expires_at = strtotime((string) ($config['expires_at'] ?? ''));
+
+  if ($starts_at !== false && $timestamp < $starts_at) {
+    return false;
+  }
+
+  if ($expires_at !== false && $timestamp >= $expires_at) {
+    return false;
+  }
+
+  return true;
 }
 
 function ll706_auth_api_login_info_card_contrast_color($background_color) {
@@ -429,15 +519,37 @@ function ll706_auth_api_normalize_login_info_card_config($config, $touch_updated
   $out['content_html'] = ll706_auth_api_sanitize_login_info_card_html($config['content_html'] ?? '');
   $background_color = sanitize_hex_color((string) ($config['background_color'] ?? ''));
   $out['background_color'] = $background_color ?: $out['background_color'];
-  $out['transparent_background'] = ll706_auth_normalize_bool($config['transparent_background'] ?? false);
+  $background_style = sanitize_key((string) ($config['background_style'] ?? ''));
+  if (array_key_exists($background_style, ll706_auth_api_login_info_card_background_styles())) {
+    $out['background_style'] = $background_style;
+  } elseif (ll706_auth_normalize_bool($config['transparent_background'] ?? false)) {
+    $out['background_style'] = 'transparent';
+  }
+  $out['transparent_background'] = $out['background_style'] === 'transparent';
   $out['ticker_enabled'] = ll706_auth_normalize_bool($config['ticker_enabled'] ?? false);
   $ticker_speed = sanitize_key((string) ($config['ticker_speed'] ?? ''));
   if (array_key_exists($ticker_speed, ll706_auth_api_login_info_card_ticker_speeds())) {
     $out['ticker_speed'] = $ticker_speed;
   }
+  $out['starts_at'] = ll706_auth_api_normalize_login_info_card_datetime($config['starts_at'] ?? '', $unslash);
+  $out['expires_at'] = ll706_auth_api_normalize_login_info_card_datetime($config['expires_at'] ?? '', $unslash);
   $out['updated_at'] = sanitize_text_field((string) ($config['updated_at'] ?? ''));
 
   if ($touch_updated_at) {
+    $starts_timestamp = strtotime($out['starts_at']);
+    $expires_timestamp = strtotime($out['expires_at']);
+    if ($starts_timestamp !== false && $expires_timestamp !== false && $expires_timestamp <= $starts_timestamp) {
+      $saved = get_option('ll706_login_info_card_config', []);
+      $out['starts_at'] = ll706_auth_api_normalize_login_info_card_datetime($saved['starts_at'] ?? '', false);
+      $out['expires_at'] = ll706_auth_api_normalize_login_info_card_datetime($saved['expires_at'] ?? '', false);
+      add_settings_error(
+        'll706_login_info_card',
+        'll706_login_info_card_invalid_schedule',
+        'The Login Information Card end time must be later than its start time. The previous schedule was kept.',
+        'error'
+      );
+    }
+
     $out['updated_at'] = gmdate('Y-m-d\TH:i:s\Z');
   }
 
@@ -455,20 +567,43 @@ function ll706_auth_api_get_login_info_card_config() {
 
 function ll706_auth_api_login_info_card_response() {
   $config = ll706_auth_api_get_login_info_card_config();
+  $has_visible_content = ll706_auth_api_login_info_card_has_visible_content($config['content_html']);
+  $schedule_is_active = ll706_auth_api_login_info_card_schedule_is_active($config);
 
-  if (empty($config['enabled']) || !ll706_auth_api_login_info_card_has_visible_content($config['content_html'])) {
-    $response = new WP_REST_Response([
+  if (
+    empty($config['enabled'])
+    || !$has_visible_content
+    || !$schedule_is_active
+  ) {
+    $disabled_response = [
       'enabled'        => false,
       'schema_version' => 1,
-    ], 200);
+    ];
+
+    $starts_timestamp = strtotime($config['starts_at']);
+    if (
+      !empty($config['enabled'])
+      && $has_visible_content
+      && $starts_timestamp !== false
+      && time() < $starts_timestamp
+    ) {
+      $disabled_response['next_refresh_at'] = $config['starts_at'];
+    }
+
+    $response = new WP_REST_Response($disabled_response, 200);
   } else {
+    $ticker_enabled = !empty($config['ticker_enabled'])
+      && ll706_auth_api_login_info_card_is_ticker_eligible($config['content_html']);
     $response = new WP_REST_Response([
       'enabled'                => true,
       'content_html'           => ll706_auth_api_sanitize_login_info_card_html($config['content_html']),
       'background_color'       => $config['background_color'],
+      'background_style'       => $config['background_style'],
       'transparent_background' => (bool) $config['transparent_background'],
-      'ticker_enabled'         => (bool) $config['ticker_enabled'],
+      'ticker_enabled'         => $ticker_enabled,
       'ticker_speed'           => $config['ticker_speed'],
+      'starts_at'              => $config['starts_at'] !== '' ? $config['starts_at'] : null,
+      'expires_at'             => $config['expires_at'] !== '' ? $config['expires_at'] : null,
       'updated_at'             => $config['updated_at'] !== '' ? $config['updated_at'] : gmdate('Y-m-d\TH:i:s\Z'),
       'schema_version'         => 1,
     ], 200);
@@ -487,6 +622,66 @@ function ll706_auth_api_admin_page_url($tab = 'dashboard-form', $args = []) {
   ], $args);
 
   return add_query_arg($params, admin_url('options-general.php'));
+}
+
+function ll706_auth_api_handle_check_updates() {
+  if (!current_user_can('manage_options')) {
+    wp_die('You do not have permission to check plugin updates.');
+  }
+
+  check_admin_referer('ll706_auth_api_check_updates');
+
+  $return_tab = isset($_POST['return_tab']) ? sanitize_key(wp_unslash($_POST['return_tab'])) : 'dashboard-form';
+  if (!in_array($return_tab, ['dashboard-form', 'login-info', 'history', 'overview', 'settings'], true)) {
+    $return_tab = 'dashboard-form';
+  }
+
+  global $ll706_auth_api_update_checker;
+
+  $status = 'error';
+  $version = '';
+
+  try {
+    if (is_object($ll706_auth_api_update_checker)
+      && method_exists($ll706_auth_api_update_checker, 'checkForUpdates')) {
+      $update = $ll706_auth_api_update_checker->checkForUpdates();
+      $errors = method_exists($ll706_auth_api_update_checker, 'getLastRequestApiErrors')
+        ? $ll706_auth_api_update_checker->getLastRequestApiErrors()
+        : [];
+      $has_critical_error = false;
+
+      foreach ((array) $errors as $item) {
+        $error = is_array($item) && isset($item['error']) ? $item['error'] : null;
+        if (!is_wp_error($error)) continue;
+
+        if (!in_array($error->get_error_code(), [
+          'puc-github-http-error',
+          'puc-gitlab-http-error',
+          'puc-bitbucket-http-error',
+        ], true)) {
+          $has_critical_error = true;
+          break;
+        }
+      }
+
+      if ($update !== null) {
+        $status = 'available';
+        $version = isset($update->version) ? sanitize_text_field((string) $update->version) : '';
+      } elseif (!$has_critical_error) {
+        $status = 'current';
+      }
+    }
+  } catch (Throwable $error) {
+    $status = 'error';
+  }
+
+  $args = ['ll706_update_check' => $status];
+  if ($version !== '') {
+    $args['ll706_update_version'] = $version;
+  }
+
+  wp_safe_redirect(ll706_auth_api_admin_page_url($return_tab, $args));
+  exit;
 }
 
 function ll706_auth_api_get_current_tab() {
@@ -986,6 +1181,34 @@ function ll706_auth_api_settings_page() {
 
 <p>This plugin provides secure login for the LL706 mobile app and API clients.</p>
 
+<?php
+$update_check_status = isset($_GET['ll706_update_check'])
+  ? sanitize_key(wp_unslash($_GET['ll706_update_check']))
+  : '';
+$update_version = isset($_GET['ll706_update_version'])
+  ? sanitize_text_field(wp_unslash($_GET['ll706_update_version']))
+  : '';
+
+if ($update_check_status === 'available') {
+  $message = $update_version !== ''
+    ? sprintf('Version %s is available. Open Plugins to install it.', $update_version)
+    : 'A plugin update is available. Open Plugins to install it.';
+  echo '<div class="notice notice-warning is-dismissible"><p>' . esc_html($message) . '</p></div>';
+} elseif ($update_check_status === 'current') {
+  echo '<div class="notice notice-success is-dismissible"><p>LL706 Auth API is up to date.</p></div>';
+} elseif ($update_check_status === 'error') {
+  echo '<div class="notice notice-error is-dismissible"><p>The update check could not be completed. Please try again later.</p></div>';
+}
+?>
+
+<form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="display: flex; align-items: center; gap: 10px; margin: 12px 0 18px;">
+  <input type="hidden" name="action" value="ll706_auth_api_check_updates">
+  <input type="hidden" name="return_tab" value="<?php echo esc_attr($tab); ?>">
+  <?php wp_nonce_field('ll706_auth_api_check_updates'); ?>
+  <?php submit_button('Check for Update', 'secondary', 'submit', false); ?>
+  <span class="description">Installed version <?php echo esc_html(LL706_AUTH_API_VERSION); ?></span>
+</form>
+
 <nav class="nav-tab-wrapper" style="margin-bottom: 20px;">
   <a href="<?php echo esc_url(ll706_auth_api_admin_page_url('dashboard-form')); ?>" class="nav-tab <?php echo $tab === 'dashboard-form' ? 'nav-tab-active' : ''; ?>">Dashboard Form Card</a>
   <a href="<?php echo esc_url(ll706_auth_api_admin_page_url('login-info')); ?>" class="nav-tab <?php echo $tab === 'login-info' ? 'nav-tab-active' : ''; ?>">Login Information Card</a>
@@ -1171,20 +1394,30 @@ Show the dashboard form card in the app.
 function ll706_auth_api_render_login_info_card_tab() {
   $login_info = ll706_auth_api_get_login_info_card_config();
   $message_presets = ll706_auth_api_login_info_card_message_presets();
-  $transparent_background = !empty($login_info['transparent_background']);
-  $default_text_color = $transparent_background
+  $background_style = $login_info['background_style'];
+  $uses_light_text = in_array($background_style, ['transparent', 'glass'], true);
+  $default_text_color = $uses_light_text
     ? '#ffffff'
     : ll706_auth_api_login_info_card_contrast_color($login_info['background_color']);
   $default_link_color = $default_text_color === '#ffffff' ? '#d4af37' : '#0066cc';
   $ticker_duration = ll706_auth_api_login_info_card_ticker_duration($login_info['ticker_speed']);
-  $editor_background = $transparent_background ? '#242424' : $login_info['background_color'];
-  $card_background = $transparent_background ? 'transparent' : $login_info['background_color'];
-  $card_border_color = $transparent_background ? 'rgba(255,255,255,0.25)' : '#dcdcde';
+  $ticker_enabled = !empty($login_info['ticker_enabled'])
+    && ll706_auth_api_login_info_card_is_ticker_eligible($login_info['content_html']);
+  $editor_background = $uses_light_text ? '#242424' : $login_info['background_color'];
+  $card_background = $background_style === 'transparent'
+    ? 'transparent'
+    : ($background_style === 'glass' ? 'rgba(0,0,0,0.14)' : $login_info['background_color']);
+  $card_border_color = $uses_light_text ? 'rgba(255,255,255,0.25)' : '#dcdcde';
+  $text_shadow = $uses_light_text ? '0 1px 2px rgba(0,0,0,0.9)' : 'none';
+  $starts_at_local = ll706_auth_api_login_info_card_datetime_local_value($login_info['starts_at']);
+  $expires_at_local = ll706_auth_api_login_info_card_datetime_local_value($login_info['expires_at']);
+  $site_timezone = wp_timezone()->getName();
   $editor_content_style = sprintf(
-    'body { background: %1$s; color: %2$s; font-family: -apple-system, BlinkMacSystemFont, Arial, sans-serif; padding: 12px; } a { color: %3$s; text-decoration: underline; }',
+    'body { background: %1$s; color: %2$s; font-family: -apple-system, BlinkMacSystemFont, Arial, sans-serif; padding: 12px; text-shadow: %4$s; } a { color: %3$s; text-decoration: underline; }',
     $editor_background,
     $default_text_color,
-    $default_link_color
+    $default_link_color,
+    $text_shadow
   );
 ?>
 <h2>Login Information Card</h2>
@@ -1219,13 +1452,14 @@ Show the Login Information Card in supported AskBruno apps.
 </tr>
 
 <tr>
-<th>Transparent Background</th>
+<th><label for="ll706_login_info_background_style">Card Appearance</label></th>
 <td>
-<label>
-<input type="checkbox" name="ll706_login_info_card_config[transparent_background]" value="1" <?php checked($transparent_background); ?> />
-Show the information directly over the AskBruno login background without a solid card color.
-</label>
-<p class="description">When enabled, the saved Card Background color is kept for later but is not displayed. Unformatted text uses white for readability.</p>
+<select id="ll706_login_info_background_style" name="ll706_login_info_card_config[background_style]">
+<?php foreach (ll706_auth_api_login_info_card_background_styles() as $style => $label) : ?>
+  <option value="<?php echo esc_attr($style); ?>" <?php selected($background_style, $style); ?>><?php echo esc_html($label); ?></option>
+<?php endforeach; ?>
+</select>
+<p class="description">Transparent removes the fill, Glass adds a light dark tint, and Solid Color uses the selected color below. Transparent and Glass use white text with a subtle shadow.</p>
 </td>
 </tr>
 
@@ -1234,7 +1468,7 @@ Show the information directly over the AskBruno login background without a solid
 <td>
 <input type="color" id="ll706_login_info_background_color" name="ll706_login_info_card_config[background_color]" value="<?php echo esc_attr($login_info['background_color']); ?>" />
 <code style="margin-left: 8px;"><?php echo esc_html($login_info['background_color']); ?></code>
-<p class="description">Defaults to white and is used only when Transparent Background is unchecked. Save changes to update the editor preview and supported apps.</p>
+<p class="description">Defaults to white and is used only with the Solid Color appearance. Save changes to update the editor preview and supported apps.</p>
 </td>
 </tr>
 
@@ -1267,13 +1501,31 @@ wp_editor(
 </tr>
 
 <tr>
+<th>Display Schedule</th>
+<td>
+<label for="ll706_login_info_starts_at" style="display: inline-block; margin: 0 24px 8px 0;">
+  <strong>Start:</strong>
+  <input type="datetime-local" id="ll706_login_info_starts_at" name="ll706_login_info_card_config[starts_at]" value="<?php echo esc_attr($starts_at_local); ?>" />
+</label>
+<label for="ll706_login_info_expires_at" style="display: inline-block; margin-bottom: 8px;">
+  <strong>End:</strong>
+  <input type="datetime-local" id="ll706_login_info_expires_at" name="ll706_login_info_card_config[expires_at]" value="<?php echo esc_attr($expires_at_local); ?>" />
+</label>
+<p class="description">Both are optional and use the site timezone (<?php echo esc_html($site_timezone); ?>). Before the start and at or after the end, the card hides automatically.</p>
+</td>
+</tr>
+
+<tr>
 <th>News Ticker</th>
 <td>
 <label>
 <input type="checkbox" name="ll706_login_info_card_config[ticker_enabled]" value="1" <?php checked(!empty($login_info['ticker_enabled'])); ?> />
 Automatically move the information from right to left across the card.
 </label>
-<p class="description">When unchecked, the card stays still and displays the information normally.</p>
+<p class="description">Used only for a short single paragraph of 180 characters or fewer. Headings, lists, line breaks, and multi-paragraph messages automatically stay still.</p>
+<?php if (!empty($login_info['ticker_enabled']) && !$ticker_enabled) : ?>
+<p class="description"><strong>The current message will stay still because it is formatted as a multi-line message or is longer than 180 characters.</strong></p>
+<?php endif; ?>
 </td>
 </tr>
 
@@ -1343,6 +1595,7 @@ Automatically move the information from right to left across the card.
 <p class="description">This preview shows the last saved version. The apps add their own card spacing and link handling.</p>
 <style>
 #ll706-login-info-preview-surface { box-sizing: border-box; max-width: 552px; padding: 16px; border-radius: 18px; background: #242424; }
+#ll706-login-info-preview { text-shadow: <?php echo esc_attr($text_shadow); ?>; }
 #ll706-login-info-preview a { color: <?php echo esc_attr($default_link_color); ?>; text-decoration: underline; }
 #ll706-login-info-preview.ll706-login-info-ticker { overflow: hidden; white-space: nowrap; }
 #ll706-login-info-preview .ll706-login-info-ticker-track { display: inline-block; min-width: max-content; padding-left: 100%; animation: ll706-login-info-ticker-preview <?php echo esc_attr($ticker_duration); ?>s linear infinite; }
@@ -1350,10 +1603,10 @@ Automatically move the information from right to left across the card.
 @keyframes ll706-login-info-ticker-preview { from { transform: translateX(0); } to { transform: translateX(-100%); } }
 </style>
 <div id="ll706-login-info-preview-surface">
-<div id="ll706-login-info-preview" class="<?php echo !empty($login_info['ticker_enabled']) ? 'll706-login-info-ticker' : ''; ?>" style="box-sizing: border-box; max-width: 520px; padding: 16px; border: 1px solid <?php echo esc_attr($card_border_color); ?>; border-radius: 16px; background: <?php echo esc_attr($card_background); ?>; color: <?php echo esc_attr($default_text_color); ?>; overflow-wrap: anywhere;">
-  <?php if (!empty($login_info['ticker_enabled'])) : ?><div class="ll706-login-info-ticker-track"><?php endif; ?>
+<div id="ll706-login-info-preview" class="<?php echo $ticker_enabled ? 'll706-login-info-ticker' : ''; ?>" style="box-sizing: border-box; max-width: 520px; padding: 16px; border: 1px solid <?php echo esc_attr($card_border_color); ?>; border-radius: 16px; background: <?php echo esc_attr($card_background); ?>; color: <?php echo esc_attr($default_text_color); ?>; overflow-wrap: anywhere;">
+  <?php if ($ticker_enabled) : ?><div class="ll706-login-info-ticker-track"><?php endif; ?>
   <?php echo ll706_auth_api_sanitize_login_info_card_html($login_info['content_html']); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Sanitized with a narrow wp_kses allowlist. ?>
-  <?php if (!empty($login_info['ticker_enabled'])) : ?></div><?php endif; ?>
+  <?php if ($ticker_enabled) : ?></div><?php endif; ?>
 </div>
 </div>
 <?php endif; ?>

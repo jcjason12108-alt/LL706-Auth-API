@@ -4,7 +4,7 @@ Tags: authentication, jwt, rest api, member approval
 Requires at least: 6.0
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 0.9.12
+Stable tag: 0.9.13
 License: GPL-2.0-or-later
 
 WordPress login, manual approval, JWT auth, and work-log REST endpoints for LL706 mobile and web apps.
@@ -30,6 +30,13 @@ Updates are checked from the `main` branch of `https://github.com/jcjason12108-a
 Yes. Define `LL706_AUTH_API_GITHUB_TOKEN` as a PHP constant or environment variable and the updater will authenticate GitHub requests with it. The generic `PLUGIN_UPDATE_GITHUB_TOKEN` constant or environment variable is also supported as a fallback.
 
 == Changelog ==
+
+= 0.9.13 =
+* Added a Check for Update button near the top of the plugin settings page.
+* Added optional start and end scheduling for the Login Information Card.
+* Added Transparent, Glass, and Solid Color card appearances with improved text contrast.
+* Added a subtle text shadow for Transparent and Glass cards.
+* Limited the news ticker to short single-paragraph messages; formatted multi-line messages now stay still automatically.
 
 = 0.9.12 =
 * Added an optional transparent background for the Login Information Card.
