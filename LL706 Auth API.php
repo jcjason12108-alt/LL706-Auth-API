@@ -3,7 +3,7 @@
  * Plugin Name: LL706 Auth API
  * Plugin URI: https://github.com/jcjason12108-alt/LL706-Auth-API/
  * Description: WordPress login + manual approval + JWT auth for LL706 mobile/web apps.
- * Version: 0.9.11
+ * Version: 0.9.12
  * Requires at least: 6.0
  * Tested up to: 7.0
  * Requires PHP: 7.4
@@ -293,12 +293,13 @@ function ll706_auth_api_dashboard_form_response() {
 
 function ll706_auth_api_login_info_card_defaults() {
   return [
-    'enabled'          => false,
-    'content_html'     => '',
-    'background_color' => '#ffffff',
-    'ticker_enabled'   => false,
-    'ticker_speed'     => 'normal',
-    'updated_at'       => '',
+    'enabled'                => false,
+    'content_html'           => '',
+    'background_color'       => '#ffffff',
+    'transparent_background' => false,
+    'ticker_enabled'         => false,
+    'ticker_speed'           => 'normal',
+    'updated_at'             => '',
   ];
 }
 
@@ -428,6 +429,7 @@ function ll706_auth_api_normalize_login_info_card_config($config, $touch_updated
   $out['content_html'] = ll706_auth_api_sanitize_login_info_card_html($config['content_html'] ?? '');
   $background_color = sanitize_hex_color((string) ($config['background_color'] ?? ''));
   $out['background_color'] = $background_color ?: $out['background_color'];
+  $out['transparent_background'] = ll706_auth_normalize_bool($config['transparent_background'] ?? false);
   $out['ticker_enabled'] = ll706_auth_normalize_bool($config['ticker_enabled'] ?? false);
   $ticker_speed = sanitize_key((string) ($config['ticker_speed'] ?? ''));
   if (array_key_exists($ticker_speed, ll706_auth_api_login_info_card_ticker_speeds())) {
@@ -461,13 +463,14 @@ function ll706_auth_api_login_info_card_response() {
     ], 200);
   } else {
     $response = new WP_REST_Response([
-      'enabled'          => true,
-      'content_html'     => ll706_auth_api_sanitize_login_info_card_html($config['content_html']),
-      'background_color' => $config['background_color'],
-      'ticker_enabled'   => (bool) $config['ticker_enabled'],
-      'ticker_speed'     => $config['ticker_speed'],
-      'updated_at'       => $config['updated_at'] !== '' ? $config['updated_at'] : gmdate('Y-m-d\TH:i:s\Z'),
-      'schema_version'   => 1,
+      'enabled'                => true,
+      'content_html'           => ll706_auth_api_sanitize_login_info_card_html($config['content_html']),
+      'background_color'       => $config['background_color'],
+      'transparent_background' => (bool) $config['transparent_background'],
+      'ticker_enabled'         => (bool) $config['ticker_enabled'],
+      'ticker_speed'           => $config['ticker_speed'],
+      'updated_at'             => $config['updated_at'] !== '' ? $config['updated_at'] : gmdate('Y-m-d\TH:i:s\Z'),
+      'schema_version'         => 1,
     ], 200);
   }
 
@@ -1168,12 +1171,18 @@ Show the dashboard form card in the app.
 function ll706_auth_api_render_login_info_card_tab() {
   $login_info = ll706_auth_api_get_login_info_card_config();
   $message_presets = ll706_auth_api_login_info_card_message_presets();
-  $default_text_color = ll706_auth_api_login_info_card_contrast_color($login_info['background_color']);
+  $transparent_background = !empty($login_info['transparent_background']);
+  $default_text_color = $transparent_background
+    ? '#ffffff'
+    : ll706_auth_api_login_info_card_contrast_color($login_info['background_color']);
   $default_link_color = $default_text_color === '#ffffff' ? '#d4af37' : '#0066cc';
   $ticker_duration = ll706_auth_api_login_info_card_ticker_duration($login_info['ticker_speed']);
+  $editor_background = $transparent_background ? '#242424' : $login_info['background_color'];
+  $card_background = $transparent_background ? 'transparent' : $login_info['background_color'];
+  $card_border_color = $transparent_background ? 'rgba(255,255,255,0.25)' : '#dcdcde';
   $editor_content_style = sprintf(
     'body { background: %1$s; color: %2$s; font-family: -apple-system, BlinkMacSystemFont, Arial, sans-serif; padding: 12px; } a { color: %3$s; text-decoration: underline; }',
-    $login_info['background_color'],
+    $editor_background,
     $default_text_color,
     $default_link_color
   );
@@ -1210,11 +1219,22 @@ Show the Login Information Card in supported AskBruno apps.
 </tr>
 
 <tr>
+<th>Transparent Background</th>
+<td>
+<label>
+<input type="checkbox" name="ll706_login_info_card_config[transparent_background]" value="1" <?php checked($transparent_background); ?> />
+Show the information directly over the AskBruno login background without a solid card color.
+</label>
+<p class="description">When enabled, the saved Card Background color is kept for later but is not displayed. Unformatted text uses white for readability.</p>
+</td>
+</tr>
+
+<tr>
 <th><label for="ll706_login_info_background_color">Card Background</label></th>
 <td>
 <input type="color" id="ll706_login_info_background_color" name="ll706_login_info_card_config[background_color]" value="<?php echo esc_attr($login_info['background_color']); ?>" />
 <code style="margin-left: 8px;"><?php echo esc_html($login_info['background_color']); ?></code>
-<p class="description">Defaults to white. Save changes to apply the selected background to the editor preview and supported apps.</p>
+<p class="description">Defaults to white and is used only when Transparent Background is unchecked. Save changes to update the editor preview and supported apps.</p>
 </td>
 </tr>
 
@@ -1322,16 +1342,19 @@ Automatically move the information from right to left across the card.
 <h3>Saved Card Preview</h3>
 <p class="description">This preview shows the last saved version. The apps add their own card spacing and link handling.</p>
 <style>
+#ll706-login-info-preview-surface { box-sizing: border-box; max-width: 552px; padding: 16px; border-radius: 18px; background: #242424; }
 #ll706-login-info-preview a { color: <?php echo esc_attr($default_link_color); ?>; text-decoration: underline; }
 #ll706-login-info-preview.ll706-login-info-ticker { overflow: hidden; white-space: nowrap; }
 #ll706-login-info-preview .ll706-login-info-ticker-track { display: inline-block; min-width: max-content; padding-left: 100%; animation: ll706-login-info-ticker-preview <?php echo esc_attr($ticker_duration); ?>s linear infinite; }
 #ll706-login-info-preview .ll706-login-info-ticker-track > * { display: inline-block; margin: 0 2rem 0 0; }
 @keyframes ll706-login-info-ticker-preview { from { transform: translateX(0); } to { transform: translateX(-100%); } }
 </style>
-<div id="ll706-login-info-preview" class="<?php echo !empty($login_info['ticker_enabled']) ? 'll706-login-info-ticker' : ''; ?>" style="box-sizing: border-box; max-width: 520px; padding: 16px; border: 1px solid #dcdcde; border-radius: 16px; background: <?php echo esc_attr($login_info['background_color']); ?>; color: <?php echo esc_attr($default_text_color); ?>; overflow-wrap: anywhere;">
+<div id="ll706-login-info-preview-surface">
+<div id="ll706-login-info-preview" class="<?php echo !empty($login_info['ticker_enabled']) ? 'll706-login-info-ticker' : ''; ?>" style="box-sizing: border-box; max-width: 520px; padding: 16px; border: 1px solid <?php echo esc_attr($card_border_color); ?>; border-radius: 16px; background: <?php echo esc_attr($card_background); ?>; color: <?php echo esc_attr($default_text_color); ?>; overflow-wrap: anywhere;">
   <?php if (!empty($login_info['ticker_enabled'])) : ?><div class="ll706-login-info-ticker-track"><?php endif; ?>
   <?php echo ll706_auth_api_sanitize_login_info_card_html($login_info['content_html']); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Sanitized with a narrow wp_kses allowlist. ?>
   <?php if (!empty($login_info['ticker_enabled'])) : ?></div><?php endif; ?>
+</div>
 </div>
 <?php endif; ?>
 <?php
