@@ -116,6 +116,14 @@ These controls write the meta key configured in the settings page so you can ren
 
 ## Changelog
 
+### 0.9.13
+
+- Added a **Check for Update** button near the top of the plugin settings page.
+- Added optional start and end scheduling for the Login Information Card.
+- Added Transparent, Glass, and Solid Color card appearances with improved text contrast.
+- Added a subtle text shadow for Transparent and Glass cards.
+- Limited the news ticker to short single-paragraph messages; formatted multi-line messages now stay still automatically.
+
 ### 0.9.12
 
 - Added an optional transparent background for the Login Information Card.
