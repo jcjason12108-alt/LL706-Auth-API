@@ -116,6 +116,11 @@ These controls write the meta key configured in the settings page so you can ren
 
 ## Changelog
 
+### 0.9.11
+
+- Added ready-to-use Quick Message presets to the Login Information Card settings.
+- Presets fill the existing rich-text editor and remain editable before publishing.
+
 ### 0.9.10
 
 - Replaced the manually scrollable Login Information Card option with an automatic right-to-left news ticker.

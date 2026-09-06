@@ -3,7 +3,7 @@
  * Plugin Name: LL706 Auth API
  * Plugin URI: https://github.com/jcjason12108-alt/LL706-Auth-API/
  * Description: WordPress login + manual approval + JWT auth for LL706 mobile/web apps.
- * Version: 0.9.10
+ * Version: 0.9.11
  * Requires at least: 6.0
  * Tested up to: 7.0
  * Requires PHP: 7.4
@@ -307,6 +307,35 @@ function ll706_auth_api_login_info_card_ticker_speeds() {
     'slow'   => 'Slow',
     'normal' => 'Normal',
     'fast'   => 'Fast',
+  ];
+}
+
+function ll706_auth_api_login_info_card_message_presets() {
+  return [
+    'upcoming-maintenance' => [
+      'label'        => 'Upcoming Scheduled Maintenance',
+      'content_html' => '<h3>Scheduled maintenance</h3><p>AskBruno may be temporarily unavailable on <strong>[date]</strong> from <strong>[start time]</strong> to <strong>[end time]</strong>.</p>',
+    ],
+    'maintenance-in-progress' => [
+      'label'        => 'Maintenance in Progress',
+      'content_html' => '<h3>Scheduled maintenance</h3><p>AskBruno is temporarily unavailable while maintenance is completed. Please try again later.</p>',
+    ],
+    'sign-in-unavailable' => [
+      'label'        => 'Sign-In Temporarily Unavailable',
+      'content_html' => '<h3>Sign-in temporarily unavailable</h3><p>We can\'t sign you in right now. Please try again later.</p>',
+    ],
+    'features-unavailable' => [
+      'label'        => 'Some Features Temporarily Unavailable',
+      'content_html' => '<h3>Some features are temporarily unavailable</h3><p>You may experience temporary problems while using AskBruno. Please try again later.</p>',
+    ],
+    'service-restored' => [
+      'label'        => 'Service Restored',
+      'content_html' => '<h3>Service restored</h3><p>AskBruno is available again. Thank you for your patience.</p>',
+    ],
+    'update-available' => [
+      'label'        => 'AskBruno Update Available',
+      'content_html' => '<h3>AskBruno update available</h3><p>A newer version of AskBruno is available with improvements and fixes.</p>',
+    ],
   ];
 }
 
@@ -1138,6 +1167,7 @@ Show the dashboard form card in the app.
 
 function ll706_auth_api_render_login_info_card_tab() {
   $login_info = ll706_auth_api_get_login_info_card_config();
+  $message_presets = ll706_auth_api_login_info_card_message_presets();
   $default_text_color = ll706_auth_api_login_info_card_contrast_color($login_info['background_color']);
   $default_link_color = $default_text_color === '#ffffff' ? '#d4af37' : '#0066cc';
   $ticker_duration = ll706_auth_api_login_info_card_ticker_duration($login_info['ticker_speed']);
@@ -1162,6 +1192,20 @@ function ll706_auth_api_render_login_info_card_tab() {
 <input type="checkbox" name="ll706_login_info_card_config[enabled]" value="1" <?php checked(!empty($login_info['enabled'])); ?> />
 Show the Login Information Card in supported AskBruno apps.
 </label>
+</td>
+</tr>
+
+<tr>
+<th><label for="ll706_login_info_message_preset">Quick Message</label></th>
+<td>
+<select id="ll706_login_info_message_preset">
+  <option value="">Choose a preset message...</option>
+  <?php foreach ($message_presets as $preset_key => $preset) : ?>
+    <option value="<?php echo esc_attr($preset_key); ?>"><?php echo esc_html($preset['label']); ?></option>
+  <?php endforeach; ?>
+</select>
+<button type="button" class="button" id="ll706_login_info_apply_preset" disabled>Use This Message</button>
+<p class="description">Fills the Information editor with ready-to-use wording. You can edit the message before saving. Scheduled maintenance includes placeholders for the date and times.</p>
 </td>
 </tr>
 
@@ -1236,6 +1280,43 @@ Automatically move the information from right to left across the card.
 
 <?php submit_button(); ?>
 </form>
+
+<script>
+(function () {
+  const presets = <?php echo wp_json_encode($message_presets, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+  const presetSelect = document.getElementById('ll706_login_info_message_preset');
+  const applyButton = document.getElementById('ll706_login_info_apply_preset');
+  const editorId = 'll706_login_info_card_editor';
+  const textarea = document.getElementById(editorId);
+
+  if (!presetSelect || !applyButton || !textarea) {
+    return;
+  }
+
+  presetSelect.addEventListener('change', function () {
+    applyButton.disabled = !presetSelect.value;
+  });
+
+  applyButton.addEventListener('click', function () {
+    const preset = presets[presetSelect.value];
+    if (!preset || typeof preset.content_html !== 'string') {
+      return;
+    }
+
+    textarea.value = preset.content_html;
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+
+    const tinyMCE = window.tinymce || window.tinyMCE;
+    const visualEditor = tinyMCE ? tinyMCE.get(editorId) : null;
+    if (visualEditor) {
+      visualEditor.setContent(preset.content_html);
+      visualEditor.fire('change');
+    }
+
+    textarea.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+}());
+</script>
 
 <?php if (ll706_auth_api_login_info_card_has_visible_content($login_info['content_html'])) : ?>
 <h3>Saved Card Preview</h3>
