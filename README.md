@@ -116,6 +116,11 @@ These controls write the meta key configured in the settings page so you can ren
 
 ## Changelog
 
+### 0.9.12
+
+- Added an optional transparent background for the Login Information Card.
+- Added a dark login-surface preview so transparent cards and their default white text can be reviewed before publishing.
+
 ### 0.9.11
 
 - Added ready-to-use Quick Message presets to the Login Information Card settings.
