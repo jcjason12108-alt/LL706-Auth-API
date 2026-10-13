@@ -3,7 +3,7 @@
  * Plugin Name: LL706 Auth API
  * Plugin URI: https://github.com/jcjason12108-alt/LL706-Auth-API/
  * Description: WordPress login + manual approval + JWT auth for LL706 mobile/web apps.
- * Version: 0.9.13
+ * Version: 0.9.14
  * Requires at least: 6.0
  * Tested up to: 7.0
  * Requires PHP: 7.4
@@ -16,7 +16,7 @@
 if (!defined('ABSPATH')) exit;
 
 if (!defined('LL706_AUTH_API_VERSION')) {
-  define('LL706_AUTH_API_VERSION', '0.9.13');
+  define('LL706_AUTH_API_VERSION', '0.9.14');
 }
 
 require_once __DIR__ . '/plugin-update-checker/plugin-update-checker.php';
@@ -43,6 +43,10 @@ add_filter(
 
 if (!defined('LL706_WORK_LOG_DB_VERSION')) {
   define('LL706_WORK_LOG_DB_VERSION', '1.0.0');
+}
+
+if (!defined('LL706_WORK_LOG_REMINDER_META_KEY')) {
+  define('LL706_WORK_LOG_REMINDER_META_KEY', 'll706_work_log_reminder');
 }
 
 function ll706_auth_api_get_github_update_token() {
@@ -1872,6 +1876,18 @@ add_action('rest_api_init', function () {
     'callback' => 'll706_auth_work_log_delete',
     'permission_callback' => 'll706_auth_api_require_bearer_token',
   ]);
+
+  register_rest_route('ll706/v1', '/work-log-reminder', [
+    'methods'  => 'GET',
+    'callback' => 'll706_auth_work_log_reminder_get',
+    'permission_callback' => 'll706_auth_api_require_bearer_token',
+  ]);
+
+  register_rest_route('ll706/v1', '/work-log-reminder', [
+    'methods'  => 'PUT',
+    'callback' => 'll706_auth_work_log_reminder_update',
+    'permission_callback' => 'll706_auth_api_require_bearer_token',
+  ]);
 });
 
 /**
@@ -2684,6 +2700,152 @@ function ll706_auth_normalize_bool($value) {
 
   $normalized = strtolower(trim((string) $value));
   return in_array($normalized, ['1', 'true', 'yes', 'on'], true);
+}
+
+function ll706_auth_work_log_reminder_default_timezone() {
+  $timezone = function_exists('wp_timezone_string') ? wp_timezone_string() : '';
+  return is_string($timezone) && $timezone !== '' ? $timezone : 'UTC';
+}
+
+function ll706_auth_work_log_reminder_defaults() {
+  return [
+    'enabled'  => false,
+    'days'     => [],
+    'time'     => '17:00',
+    'timezone' => ll706_auth_work_log_reminder_default_timezone(),
+  ];
+}
+
+function ll706_auth_work_log_reminder_is_valid_timezone($timezone) {
+  if ($timezone === 'UTC' || in_array($timezone, DateTimeZone::listIdentifiers(), true)) {
+    return true;
+  }
+
+  return (bool) preg_match('/^[+-](?:0\d|1[0-4]):[0-5]\d$/', $timezone);
+}
+
+function ll706_auth_work_log_reminder_normalize($settings) {
+  $defaults = ll706_auth_work_log_reminder_defaults();
+  $settings = is_array($settings) ? $settings : [];
+  $days = isset($settings['days']) && is_array($settings['days']) ? $settings['days'] : [];
+  $allowed_days = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+
+  $days = array_values(array_unique(array_filter(array_map(
+    static function ($day) {
+      return sanitize_key((string) $day);
+    },
+    $days
+  ), static function ($day) use ($allowed_days) {
+    return in_array($day, $allowed_days, true);
+  })));
+
+  $time = isset($settings['time']) ? sanitize_text_field((string) $settings['time']) : $defaults['time'];
+  if (!preg_match('/^(?:[01]\d|2[0-3]):[0-5]\d$/', $time)) {
+    $time = $defaults['time'];
+  }
+
+  $timezone = isset($settings['timezone']) ? sanitize_text_field((string) $settings['timezone']) : $defaults['timezone'];
+  if (!ll706_auth_work_log_reminder_is_valid_timezone($timezone)) {
+    $timezone = $defaults['timezone'];
+  }
+
+  return [
+    'enabled'  => !empty($settings['enabled']),
+    'days'     => $days,
+    'time'     => $time,
+    'timezone' => $timezone,
+  ];
+}
+
+function ll706_auth_work_log_reminder_get_settings($user_id) {
+  return ll706_auth_work_log_reminder_normalize(
+    get_user_meta((int) $user_id, LL706_WORK_LOG_REMINDER_META_KEY, true)
+  );
+}
+
+function ll706_auth_work_log_reminder_get(WP_REST_Request $req) {
+  $payload = ll706_auth_get_current_user_from_request($req);
+  if (is_wp_error($payload)) {
+    return ll706_auth_error_response($payload);
+  }
+
+  $user_id = (int) $payload['data']['user_id'];
+  return new WP_REST_Response([
+    'ok' => true,
+    'reminder' => ll706_auth_work_log_reminder_get_settings($user_id),
+  ], 200);
+}
+
+function ll706_auth_work_log_reminder_update(WP_REST_Request $req) {
+  $payload = ll706_auth_get_current_user_from_request($req);
+  if (is_wp_error($payload)) {
+    return ll706_auth_error_response($payload);
+  }
+
+  $user_id = (int) $payload['data']['user_id'];
+  $settings = ll706_auth_work_log_reminder_get_settings($user_id);
+
+  foreach (['enabled', 'days', 'time', 'timezone'] as $key) {
+    if ($req->has_param($key)) {
+      $settings[$key] = $req->get_param($key);
+    }
+  }
+
+  if ($req->has_param('enabled')) {
+    $settings['enabled'] = ll706_auth_normalize_bool($settings['enabled']);
+  }
+
+  if (!isset($settings['days']) || !is_array($settings['days'])) {
+    return ll706_auth_error_response(new WP_Error(
+      'invalid_reminder_days',
+      'days must be an array containing sun, mon, tue, wed, thu, fri, or sat.',
+      ['status' => 400]
+    ));
+  }
+
+  $allowed_days = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+  foreach ($settings['days'] as $day) {
+    if (!in_array(sanitize_key((string) $day), $allowed_days, true)) {
+      return ll706_auth_error_response(new WP_Error(
+        'invalid_reminder_day',
+        'Each reminder day must be sun, mon, tue, wed, thu, fri, or sat.',
+        ['status' => 400]
+      ));
+    }
+  }
+
+  if ($req->has_param('time') && !preg_match('/^(?:[01]\d|2[0-3]):[0-5]\d$/', (string) $settings['time'])) {
+    return ll706_auth_error_response(new WP_Error(
+      'invalid_reminder_time',
+      'time must use 24-hour HH:MM format.',
+      ['status' => 400]
+    ));
+  }
+
+  if ($req->has_param('timezone') && !ll706_auth_work_log_reminder_is_valid_timezone((string) $settings['timezone'])) {
+    return ll706_auth_error_response(new WP_Error(
+      'invalid_reminder_timezone',
+      'timezone must be a valid IANA timezone or UTC offset.',
+      ['status' => 400]
+    ));
+  }
+
+  $settings = ll706_auth_work_log_reminder_normalize($settings);
+
+  if ($settings['enabled'] && empty($settings['days'])) {
+    return ll706_auth_error_response(new WP_Error(
+      'invalid_reminder_schedule',
+      'At least one day is required when the work-log reminder is enabled.',
+      ['status' => 400]
+    ));
+  }
+
+  update_user_meta($user_id, LL706_WORK_LOG_REMINDER_META_KEY, $settings);
+
+  return new WP_REST_Response([
+    'ok' => true,
+    'reminder' => $settings,
+  ], 200);
 }
 
 function ll706_auth_sanitize_text_list($value) {
