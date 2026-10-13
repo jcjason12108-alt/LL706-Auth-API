@@ -15,6 +15,7 @@ WordPress plugin that powers the LL706 mobile and web apps with hardened login, 
 - `/me` endpoint that validates tokens, rehydrates Ultimate Member fields, and returns the current user payload.
 - Public `/dashboard-form` endpoint for a remote-controlled Ask Bruno dashboard form card.
 - Per-user work-log storage with authenticated create, read, update, and soft-delete endpoints.
+- Per-user work-log reminder preferences with authenticated read/update endpoints for app-local scheduling.
 - Admin settings page with separate Dashboard Form Card, Login History, Overview, and Settings tabs.
 - Per-user app login summary showing each member’s latest successful app login, token status, IP, and user agent.
 - CSV export for the last-login summary.
@@ -44,6 +45,24 @@ All routes live under the namespace `ll706/v1`.
 | `/work-log` | `POST` | Create a work-log entry for the authenticated member. | `Authorization: Bearer <token>` header plus `work_date`, `shift` (`1st`, `2nd`, or `3rd`; numeric `1`, `2`, and `3` are normalized), `work_items`, and optional `entry_uuid`, `doubled`, `supervisor`, `worked_with`, `notes` |
 | `/work-log/{entry_uuid}` | `PUT` | Update one work-log entry owned by the authenticated member. | `Authorization: Bearer <token>` header plus the same body fields as create |
 | `/work-log/{entry_uuid}` | `DELETE` | Soft-delete one work-log entry owned by the authenticated member. | `Authorization: Bearer <token>` header |
+| `/work-log-reminder` | `GET` | Return the authenticated member’s work-log reminder settings. | `Authorization: Bearer <token>` header |
+| `/work-log-reminder` | `PUT` | Save the authenticated member’s work-log reminder settings. | `Authorization: Bearer <token>` header plus optional `enabled`, `days`, `time`, and `timezone` |
+
+Work-log reminder settings are stored as one per-user WordPress user-meta record. The app is responsible for scheduling local notifications; the API does not create or send reminder notifications.
+
+Example reminder response:
+
+```json
+{
+  "ok": true,
+  "reminder": {
+    "enabled": true,
+    "days": ["mon", "tue", "wed", "thu", "fri"],
+    "time": "17:00",
+    "timezone": "America/Los_Angeles"
+  }
+}
+```
 
 Responses follow a consistent shape:
 
@@ -113,6 +132,11 @@ These controls write the meta key configured in the settings page so you can ren
   (replace `ll706_approved` if you changed the meta key).
 
 ## Changelog
+
+### 0.9.8
+
+- Added authenticated `/work-log-reminder` GET and PUT endpoints for per-user reminder preferences.
+- Store reminder preferences in one user-meta record without adding rows to the work-log table.
 
 ### 0.9.7
 
