@@ -4,20 +4,20 @@ Tags: authentication, jwt, rest api, member approval
 Requires at least: 6.0
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 0.9.8
+Stable tag: 0.9.14
 License: GPL-2.0-or-later
 
 WordPress login, manual approval, JWT auth, work-log, and work-log reminder REST endpoints for LL706 mobile and web apps.
 
 == Description ==
 
-LL706 Auth API powers LL706 mobile and web app authentication with hardened login, membership approval, JSON Web Token authentication, login history, a remote Ask Bruno dashboard form card, and member work-log endpoints.
+LL706 Auth API powers LL706 mobile and web app authentication with hardened login, membership approval, JSON Web Token authentication, login history, remote AskBruno dashboard and login information cards, and member work-log endpoints.
 
 == Installation ==
 
 1. Upload the `ll706-auth-api` folder to `wp-content/plugins/`.
 2. Activate LL706 Auth API from Plugins in the WordPress dashboard.
-3. Open Settings > LL706 Auth API to configure the JWT secret, approval meta key, dashboard form card, token lifetimes, and login log retention.
+3. Open Settings > LL706 Auth API to configure the JWT secret, approval meta key, dashboard form card, login information card, token lifetimes, and login log retention.
 
 == Frequently Asked Questions ==
 
@@ -31,9 +31,38 @@ Yes. Define `LL706_AUTH_API_GITHUB_TOKEN` as a PHP constant or environment varia
 
 == Changelog ==
 
-= 0.9.8 =
+= 0.9.14 =
 * Added authenticated `/work-log-reminder` GET and PUT endpoints for per-user reminder preferences.
 * Store reminder preferences in one user-meta record without adding rows to the work-log table.
+
+= 0.9.13 =
+* Added a Check for Update button near the top of the plugin settings page.
+* Added optional start and end scheduling for the Login Information Card.
+* Added Transparent, Glass, and Solid Color card appearances with improved text contrast.
+* Added a subtle text shadow for Transparent and Glass cards.
+* Limited the news ticker to short single-paragraph messages; formatted multi-line messages now stay still automatically.
+
+= 0.9.12 =
+* Added an optional transparent background for the Login Information Card.
+* Added a dark login-surface preview so transparent cards and their default white text can be reviewed before publishing.
+
+= 0.9.11 =
+* Added ready-to-use Quick Message presets to the Login Information Card settings.
+* Presets fill the existing rich-text editor and remain editable before publishing.
+
+= 0.9.10 =
+* Replaced the manually scrollable Login Information Card option with an automatic right-to-left news ticker.
+* Added Slow, Normal, and Fast ticker speed choices to the administrator settings and public /login-info response.
+
+= 0.9.9 =
+* Changed the Login Information Card background default to white and added an administrator-selectable background color.
+* Added an optional scrollable card mode with a configurable 100-500 point/pixel maximum height.
+* Added background and scrolling fields to the public /login-info response.
+
+= 0.9.8 =
+* Added a separate Login Information Card settings tab with a rich-text editor and saved-card preview.
+* Added the public GET /wp-json/ll706/v1/login-info endpoint for supported AskBruno apps.
+* Restricted login-card content to sanitized formatting and safe links, with scripts and embedded content removed.
 
 = 0.9.7 =
 * Recheck user approval on every authenticated REST request so blocking a user takes effect immediately.
