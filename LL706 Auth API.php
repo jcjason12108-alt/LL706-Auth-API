@@ -3,7 +3,7 @@
  * Plugin Name: LL706 Auth API
  * Plugin URI: https://github.com/jcjason12108-alt/LL706-Auth-API/
  * Description: WordPress login + manual approval + JWT auth for LL706 mobile/web apps.
- * Version: 0.9.16
+ * Version: 0.9.17
  * Requires at least: 6.0
  * Tested up to: 7.0
  * Requires PHP: 7.4
@@ -16,7 +16,7 @@
 if (!defined('ABSPATH')) exit;
 
 if (!defined('LL706_AUTH_API_VERSION')) {
-  define('LL706_AUTH_API_VERSION', '0.9.16');
+  define('LL706_AUTH_API_VERSION', '0.9.17');
 }
 
 require_once __DIR__ . '/plugin-update-checker/plugin-update-checker.php';
@@ -185,6 +185,8 @@ function ll706_auth_api_defaults() {
     'token_ttl_member'  => 24 * HOUR_IN_SECONDS,
     'token_version'     => 1,
     'login_log_retention_days' => 90,
+    'supabase_url'      => 'https://cswidzrhxhjjedcmtbmg.supabase.co',
+    'supabase_service_role_key' => '',
   ];
 }
 
@@ -1203,6 +1205,17 @@ function ll706_auth_api_sanitize_options($opts) {
   $out['token_version'] = max(1, intval($opts['token_version'] ?? 1));
   $out['login_log_retention_days'] = max(0, min(3650, intval($opts['login_log_retention_days'] ?? $defaults['login_log_retention_days'])));
 
+  $out['supabase_url'] = esc_url_raw((string) ($opts['supabase_url'] ?? $defaults['supabase_url']));
+  $submitted_service_key = trim((string) ($opts['supabase_service_role_key'] ?? ''));
+  $existing_options = get_option('ll706_auth_api_options', []);
+  $existing_service_key = is_array($existing_options)
+    ? trim((string) ($existing_options['supabase_service_role_key'] ?? ''))
+    : '';
+  // A blank password field means "keep the saved key" rather than erase it.
+  $out['supabase_service_role_key'] = $submitted_service_key !== ''
+    ? sanitize_text_field($submitted_service_key)
+    : $existing_service_key;
+
   return $out;
 }
 
@@ -1721,6 +1734,28 @@ Identifier embedded in login tokens. Change this if you reuse the plugin for ano
 <p class="description">
 How long to keep login log rows before daily cleanup removes them. Set to <code>0</code> to disable automatic cleanup.
 </p>
+</td>
+</tr>
+
+</table>
+
+<h2>Seniority Roster</h2>
+<p>The roster endpoint reads from Supabase. These credentials stay in WordPress and are never sent to the iOS or Android apps.</p>
+<table class="form-table">
+
+<tr>
+<th><label for="ll706_supabase_url">Supabase URL</label></th>
+<td>
+<input type="url" id="ll706_supabase_url" name="ll706_auth_api_options[supabase_url]" value="<?php echo esc_attr($opts['supabase_url']); ?>" class="regular-text" autocomplete="off" />
+<p class="description">The Supabase project URL containing the <code>askbruno_seniority_roster</code> table.</p>
+</td>
+</tr>
+
+<tr>
+<th><label for="ll706_supabase_service_role_key">Supabase service-role key</label></th>
+<td>
+<input type="password" id="ll706_supabase_service_role_key" name="ll706_auth_api_options[supabase_service_role_key]" value="" class="regular-text" autocomplete="new-password" placeholder="<?php echo !empty($opts['supabase_service_role_key']) ? esc_attr__('Saved — leave blank to keep it', 'll706-auth-api') : esc_attr__('Paste service-role key', 'll706-auth-api'); ?>" />
+<p class="description">Required for the server-side read. The saved value is never displayed; leave this blank when updating other settings to keep the existing key.</p>
 </td>
 </tr>
 
@@ -2746,6 +2781,12 @@ function ll706_auth_seniority_roster_get(WP_REST_Request $req) {
   $service_key = defined('LL706_SUPABASE_SERVICE_ROLE_KEY')
     ? trim((string) LL706_SUPABASE_SERVICE_ROLE_KEY)
     : trim((string) getenv('LL706_SUPABASE_SERVICE_ROLE_KEY'));
+
+  if ($supabase_url === '' || $service_key === '') {
+    $opts = ll706_auth_api_get_options();
+    $supabase_url = $supabase_url !== '' ? $supabase_url : trim((string) ($opts['supabase_url'] ?? ''));
+    $service_key = $service_key !== '' ? $service_key : trim((string) ($opts['supabase_service_role_key'] ?? ''));
+  }
 
   if ($supabase_url === '' || $service_key === '') {
     return new WP_Error(

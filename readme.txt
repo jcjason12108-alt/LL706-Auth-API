@@ -4,7 +4,7 @@ Tags: authentication, jwt, rest api, member approval
 Requires at least: 6.0
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 0.9.16
+Stable tag: 0.9.17
 License: GPL-2.0-or-later
 
 WordPress login, manual approval, JWT auth, work-log, and work-log reminder REST endpoints for LL706 mobile and web apps.
@@ -14,6 +14,9 @@ WordPress login, manual approval, JWT auth, work-log, and work-log reminder REST
 LL706 Auth API powers LL706 mobile and web app authentication with hardened login, membership approval, JSON Web Token authentication, login history, remote AskBruno dashboard and login information cards, and member work-log endpoints.
 
 == Changelog ==
+
+= 0.9.17 =
+* Added administrator settings for the Supabase seniority roster connection.
 
 = 0.9.16 =
 * Added an authenticated seniority roster endpoint backed by the configured Supabase table.
