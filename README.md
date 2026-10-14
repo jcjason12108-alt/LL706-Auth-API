@@ -17,6 +17,7 @@ WordPress plugin that powers the LL706 mobile and web apps with hardened login, 
 - Public `/login-info` endpoint for a remote-controlled, sanitized rich-text card on the AskBruno login screen.
 - Per-user work-log storage with authenticated create, read, update, and soft-delete endpoints.
 - Per-user work-log reminder preferences with authenticated read/update endpoints for app-local scheduling.
+- Public Android Digital Asset Links document at `/.well-known/assetlinks.json` so supported password managers can share saved website credentials with the Play-signed AskBruno app.
 - Admin settings page with separate Dashboard Form Card, Login History, Overview, and Settings tabs.
 - Admin settings page with separate Dashboard Form Card, Login Information Card, Login History, Overview, and Settings tabs.
 - Per-user app login summary showing each member’s latest successful app login, token status, IP, and user agent.
@@ -52,6 +53,12 @@ All routes live under the namespace `ll706/v1`.
 | `/work-log-reminder` | `PUT` | Save the authenticated member’s work-log reminder settings. | `Authorization: Bearer <token>` header plus optional `enabled`, `days`, `time`, and `timezone` |
 
 Work-log reminder settings are stored as one per-user WordPress user-meta record. The app is responsible for scheduling local notifications; the API does not create or send reminder notifications.
+
+## Android credential sharing
+
+The plugin serves `https://www.iamll706.org/.well-known/assetlinks.json` with the `delegate_permission/common.get_login_creds` relation for `org.iamll706.askbruno`. Its SHA-256 fingerprint is the **Google Play app-signing certificate**, not the local upload key. The Android app includes an `asset_statements` reference to this URL. This associates saved website passwords with the app; it does not create accounts, change passwords, or bypass normal WordPress login and approval checks.
+
+Deploy the plugin before publishing the Android version containing the manifest reference. Verify that the URL responds directly with HTTP 200, `Content-Type: application/json`, and no redirect. If the web server handles `/.well-known/` before WordPress, configure it to pass this path to WordPress or serve the same JSON as a static file. Then test autofill with a password saved for `www.iamll706.org` on a Play-installed build. The local `sha256.txt` is the upload certificate and must not replace the Play app-signing fingerprint in the asset links response.
 
 Example reminder response:
 

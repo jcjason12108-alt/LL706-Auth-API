@@ -3,7 +3,7 @@
  * Plugin Name: LL706 Auth API
  * Plugin URI: https://github.com/jcjason12108-alt/LL706-Auth-API/
  * Description: WordPress login + manual approval + JWT auth for LL706 mobile/web apps.
- * Version: 0.9.14
+ * Version: 0.9.15
  * Requires at least: 6.0
  * Tested up to: 7.0
  * Requires PHP: 7.4
@@ -16,7 +16,7 @@
 if (!defined('ABSPATH')) exit;
 
 if (!defined('LL706_AUTH_API_VERSION')) {
-  define('LL706_AUTH_API_VERSION', '0.9.14');
+  define('LL706_AUTH_API_VERSION', '0.9.15');
 }
 
 require_once __DIR__ . '/plugin-update-checker/plugin-update-checker.php';
@@ -69,6 +69,45 @@ function ll706_auth_api_get_github_update_token() {
 
 register_activation_hook(__FILE__, 'll706_auth_api_activate');
 register_deactivation_hook(__FILE__, 'll706_auth_api_deactivate');
+
+/**
+ * Let Android credential providers share saved iamll706.org passwords with
+ * the Play-signed AskBruno app. This public well-known URL must not redirect.
+ */
+add_action('init', 'll706_auth_api_serve_android_asset_links', 0);
+
+function ll706_auth_api_serve_android_asset_links() {
+  $path = parse_url((string) ($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_PATH);
+  if ($path !== '/.well-known/assetlinks.json') {
+    return;
+  }
+
+  $statements = [
+    [
+      'relation' => ['delegate_permission/common.get_login_creds'],
+      'target' => [
+        'namespace' => 'web',
+        'site' => 'https://www.iamll706.org',
+      ],
+    ],
+    [
+      'relation' => ['delegate_permission/common.get_login_creds'],
+      'target' => [
+        'namespace' => 'android_app',
+        'package_name' => 'org.iamll706.askbruno',
+        // Google Play app-signing certificate, not the upload certificate.
+        'sha256_cert_fingerprints' => [
+          'A9:DD:6C:C5:CA:0F:1F:55:14:B1:27:8B:42:93:EB:4E:38:C7:41:D5:DE:7E:1C:14:AF:24:F4:0B:5D:0E:D1:8E',
+        ],
+      ],
+    ],
+  ];
+
+  status_header(200);
+  header('Content-Type: application/json; charset=utf-8');
+  echo wp_json_encode($statements);
+  exit;
+}
 
 /**
  * =====================================================
