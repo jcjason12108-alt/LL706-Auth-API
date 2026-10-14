@@ -3,7 +3,7 @@
  * Plugin Name: LL706 Auth API
  * Plugin URI: https://github.com/jcjason12108-alt/LL706-Auth-API/
  * Description: WordPress login + manual approval + JWT auth for LL706 mobile/web apps.
- * Version: 0.9.15
+ * Version: 0.9.16
  * Requires at least: 6.0
  * Tested up to: 7.0
  * Requires PHP: 7.4
@@ -16,7 +16,7 @@
 if (!defined('ABSPATH')) exit;
 
 if (!defined('LL706_AUTH_API_VERSION')) {
-  define('LL706_AUTH_API_VERSION', '0.9.15');
+  define('LL706_AUTH_API_VERSION', '0.9.16');
 }
 
 require_once __DIR__ . '/plugin-update-checker/plugin-update-checker.php';
@@ -1892,6 +1892,12 @@ add_action('rest_api_init', function () {
     'permission_callback' => 'll706_auth_api_require_bearer_token',
   ]);
 
+  register_rest_route('ll706/v1', '/seniority-roster', [
+    'methods'  => 'GET',
+    'callback' => 'll706_auth_seniority_roster_get',
+    'permission_callback' => 'll706_auth_api_require_bearer_token',
+  ]);
+
   register_rest_route('ll706/v1', '/work-log', [
     'methods'  => 'GET',
     'callback' => 'll706_auth_work_log_get',
@@ -2725,6 +2731,73 @@ function ll706_auth_me(WP_REST_Request $req) {
     'ok' => true,
     'user' => $user,
     'expires_at' => $payload['exp']
+  ], 200);
+}
+
+/**
+ * Read-only roster proxy for authenticated AskBruno clients.
+ * Supabase remains the source of truth; the service-role credential stays on
+ * the WordPress server and is never shipped to the app.
+ */
+function ll706_auth_seniority_roster_get(WP_REST_Request $req) {
+  $supabase_url = defined('LL706_SUPABASE_URL')
+    ? trim((string) LL706_SUPABASE_URL)
+    : trim((string) getenv('LL706_SUPABASE_URL'));
+  $service_key = defined('LL706_SUPABASE_SERVICE_ROLE_KEY')
+    ? trim((string) LL706_SUPABASE_SERVICE_ROLE_KEY)
+    : trim((string) getenv('LL706_SUPABASE_SERVICE_ROLE_KEY'));
+
+  if ($supabase_url === '' || $service_key === '') {
+    return new WP_Error(
+      'roster_backend_not_configured',
+      'The seniority roster service is not configured.',
+      ['status' => 503]
+    );
+  }
+
+  $endpoint = rtrim($supabase_url, '/') . '/rest/v1/askbruno_seniority_roster';
+  $endpoint = add_query_arg([
+    'select' => 'id,list_number,seniority_date,employee,first_name_initial,middle_name_initial,active_number,journeyman_status',
+    'list_number' => 'not.is.null',
+    'employee' => 'not.is.null',
+    'order' => 'id.asc',
+  ], $endpoint);
+
+  $response = wp_remote_get($endpoint, [
+    'timeout' => 20,
+    'headers' => [
+      'apikey' => $service_key,
+      'Authorization' => 'Bearer ' . $service_key,
+      'Accept' => 'application/json',
+    ],
+  ]);
+
+  if (is_wp_error($response)) {
+    return new WP_Error(
+      'roster_backend_unavailable',
+      'The seniority roster is temporarily unavailable.',
+      ['status' => 503]
+    );
+  }
+
+  $status = (int) wp_remote_retrieve_response_code($response);
+  $body = json_decode(wp_remote_retrieve_body($response), true);
+
+  if ($status < 200 || $status >= 300 || !is_array($body)) {
+    return new WP_Error(
+      'roster_backend_error',
+      'The seniority roster could not be loaded.',
+      ['status' => 503]
+    );
+  }
+
+  return new WP_REST_Response([
+    'ok' => true,
+    'rows' => array_values(array_filter($body, static function ($row) {
+      return is_array($row)
+        && isset($row['list_number'])
+        && isset($row['employee']);
+    })),
   ], 200);
 }
 
