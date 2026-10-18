@@ -3,7 +3,7 @@
  * Plugin Name: LL706 Auth API
  * Plugin URI: https://github.com/jcjason12108-alt/LL706-Auth-API/
  * Description: WordPress login + manual approval + JWT auth for LL706 mobile/web apps.
- * Version: 0.9.17
+ * Version: 0.9.18
  * Requires at least: 6.0
  * Tested up to: 7.0
  * Requires PHP: 7.4
@@ -15,8 +15,10 @@
 
 if (!defined('ABSPATH')) exit;
 
+require_once __DIR__ . '/restore-credentials.php';
+
 if (!defined('LL706_AUTH_API_VERSION')) {
-  define('LL706_AUTH_API_VERSION', '0.9.17');
+  define('LL706_AUTH_API_VERSION', '0.9.18');
 }
 
 require_once __DIR__ . '/plugin-update-checker/plugin-update-checker.php';
@@ -2507,6 +2509,11 @@ function ll706_auth_login(WP_REST_Request $req) {
       }
   }
 
+  return ll706_auth_api_issue_token_for_user($user);
+}
+
+function ll706_auth_api_issue_token_for_user(WP_User $user) {
+  $opts = ll706_auth_api_get_options();
   $role = $user->roles[0] ?? 'subscriber';
   $ttl  = ($role === 'administrator') ? $opts['token_ttl_admin']
         : (($role === 'executive_board' || $role === 'general_chairman') ? $opts['token_ttl_exec']
