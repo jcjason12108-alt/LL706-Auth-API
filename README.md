@@ -141,7 +141,7 @@ These controls write the meta key configured in the settings page so you can ren
 ## Development
 
 - Lint PHP before committing: `php -l 'LL706 Auth API.php'`.
-- Restore Credentials uses the bundled MIT-licensed `lbuchs/webauthn` 2.2.0 library. Only the public key is stored by this plugin; Android handles private-key backup and device transfer. Password changes, app logout, account blocking, and global token invalidation stop restore sign-ins. The built-in Android origin list contains the Play app-signing certificate. For a debug build, define `LL706_RESTORE_EXTRA_CERT_SHA256` in `wp-config.php` as an array of additional signing-certificate SHA-256 fingerprints.
+- Restore Credentials uses the bundled MIT-licensed `lbuchs/webauthn` 2.2.0 library. Only the public key is stored by this plugin; Android handles private-key backup and device transfer. Password changes, app logout, account blocking, and global token invalidation stop restore sign-ins. The built-in Android origin list contains the Play app-signing certificate and the QA tablet's debug certificate. For other debug builds, define `LL706_RESTORE_EXTRA_CERT_SHA256` in `wp-config.php` as an array of additional signing-certificate SHA-256 fingerprints.
 - To verify the complete flow, install the updated server before the app, sign in on an Android 9+ source device, and use Android Studio's **Backup App Data** and **Restore App Data** on a second device or emulator. Confirm the restored app reaches the signed-in screen without credentials, `/me` works with the new token, and explicit logout prevents another automatic sign-in. A local build needs its signing-certificate fingerprint in `LL706_RESTORE_EXTRA_CERT_SHA256`; the Play-signed build uses the built-in fingerprint.
 - GitHub update checks require the repository root to contain `LL706 Auth API.php` directly, not inside an extra nested plugin folder.
 - If GitHub returns 403 during update checks, define `LL706_AUTH_API_GITHUB_TOKEN` as a fine-grained GitHub token with read access to this repository. The generic `PLUGIN_UPDATE_GITHUB_TOKEN` constant or environment variable is also supported as a fallback.
@@ -151,6 +151,10 @@ These controls write the meta key configured in the settings page so you can ren
   (replace `ll706_approved` if you changed the meta key).
 
 ## Changelog
+
+### 0.9.19
+
+- Accepted the QA tablet's debug signing certificate as an Android restore credential origin, alongside the Play app-signing certificate.
 
 ### 0.9.18
 
