@@ -5,6 +5,8 @@ if (!defined('ABSPATH')) exit;
 const LL706_RESTORE_SCHEMA_VERSION = '1';
 const LL706_RESTORE_RP_ID = 'www.iamll706.org';
 const LL706_RESTORE_PLAY_CERT_SHA256 = 'A9:DD:6C:C5:CA:0F:1F:55:14:B1:27:8B:42:93:EB:4E:38:C7:41:D5:DE:7E:1C:14:AF:24:F4:0B:5D:0E:D1:8E';
+// QA tablet build; Android WebAuthn binds the origin to this exact signing certificate.
+const LL706_RESTORE_QA_CERT_SHA256 = '8C:90:44:58:4C:32:CA:C1:98:69:50:D3:85:3A:EA:B9:46:95:B5:E4:E5:36:81:DB:7F:28:CF:91:DC:3C:F5:5A';
 
 function ll706_restore_ready() {
   return PHP_VERSION_ID >= 80000 && extension_loaded('openssl');
@@ -71,7 +73,7 @@ function ll706_restore_webauthn() {
     if (is_file($path)) require_once $path;
   });
   $wa = new \lbuchs\WebAuthn\WebAuthn('AskBruno', LL706_RESTORE_RP_ID, ['none', 'packed'], true);
-  $hashes = [LL706_RESTORE_PLAY_CERT_SHA256];
+  $hashes = [LL706_RESTORE_PLAY_CERT_SHA256, LL706_RESTORE_QA_CERT_SHA256];
   if (defined('LL706_RESTORE_EXTRA_CERT_SHA256') && is_array(LL706_RESTORE_EXTRA_CERT_SHA256)) {
     $hashes = array_merge($hashes, LL706_RESTORE_EXTRA_CERT_SHA256);
   }
@@ -130,7 +132,7 @@ function ll706_restore_android_origin_valid($client_data_json) {
   $prefix = 'android:apk-key-hash:';
   if (strpos($origin, $prefix) !== 0) return false;
   $hash = substr($origin, strlen($prefix));
-  $fingerprints = [LL706_RESTORE_PLAY_CERT_SHA256];
+  $fingerprints = [LL706_RESTORE_PLAY_CERT_SHA256, LL706_RESTORE_QA_CERT_SHA256];
   if (defined('LL706_RESTORE_EXTRA_CERT_SHA256') && is_array(LL706_RESTORE_EXTRA_CERT_SHA256)) {
     $fingerprints = array_merge($fingerprints, LL706_RESTORE_EXTRA_CERT_SHA256);
   }
