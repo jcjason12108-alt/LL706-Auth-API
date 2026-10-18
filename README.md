@@ -7,6 +7,7 @@ WordPress plugin that powers the LL706 mobile and web apps with hardened login, 
 - WordPress 6.0 or higher
 - Tested up to WordPress 7.0
 - PHP 7.4 or higher
+- Android Restore Credentials endpoints require PHP 8.0 or higher and OpenSSL. Other plugin features retain PHP 7.4 compatibility.
 
 ## Features
 
@@ -18,6 +19,7 @@ WordPress plugin that powers the LL706 mobile and web apps with hardened login, 
 - Per-user work-log storage with authenticated create, read, update, and soft-delete endpoints.
 - Per-user work-log reminder preferences with authenticated read/update endpoints for app-local scheduling.
 - Public Android Digital Asset Links document at `/.well-known/assetlinks.json` so supported password managers can share saved website credentials with the Play-signed AskBruno app.
+- Android Restore Credentials endpoints that verify a transferred restore key and issue a new short-lived app token.
 - Admin settings page with separate Dashboard Form Card, Login History, Overview, and Settings tabs.
 - Admin settings page with separate Dashboard Form Card, Login Information Card, Login History, Overview, and Settings tabs.
 - Per-user app login summary showing each member’s latest successful app login, token status, IP, and user agent.
@@ -29,7 +31,7 @@ WordPress plugin that powers the LL706 mobile and web apps with hardened login, 
 
 ## Installation
 
-1. Copy `LL706 Auth API.php` into `wp-content/plugins/ll706-auth-api/` (or clone this repository there).
+1. Copy the entire plugin directory into `wp-content/plugins/ll706-auth-api/` (or clone this repository there).
 2. In the WordPress dashboard, activate **LL706 Auth API** under *Plugins → Installed Plugins*.
 3. Open *Settings → LL706 Auth API* to configure the JWT secret, approval meta key, dashboard form card, login information card, token lifetimes, and login log retention. Changing the secret or the “Force Logout” button invalidates existing tokens.
 4. Use the *Overview* tab for built-in documentation and the *Login History* tab for recent app login activity and CSV export.
@@ -45,6 +47,11 @@ All routes live under the namespace `ll706/v1`.
 | `/dashboard-form` | `GET` | Return the public dashboard form-card configuration for the app. | None |
 | `/login-info` | `GET` | Return sanitized rich text for the public AskBruno Login Information Card. | None |
 | `/me` | `GET` | Validate a token and return the hydrated user payload. | `Authorization: Bearer <token>` header |
+| `/restore-credential/register-options` | `POST` | Create a short-lived WebAuthn registration challenge. | `Authorization: Bearer <token>` header |
+| `/restore-credential/register` | `POST` | Verify and save the Android restore public key. | Bearer token, `flow_id`, `credential_json` |
+| `/restore-credential/auth-options` | `POST` | Create a short-lived authentication challenge. | None |
+| `/restore-credential/auth` | `POST` | Verify the transferred key and issue a fresh app token. | `flow_id`, `credential_json` |
+| `/restore-credential/revoke` | `POST` | Revoke restore keys when a member logs out. | `Authorization: Bearer <token>` header |
 | `/work-log` | `GET` | Return the authenticated member’s non-deleted work-log entries. | `Authorization: Bearer <token>` header |
 | `/work-log` | `POST` | Create a work-log entry for the authenticated member. | `Authorization: Bearer <token>` header plus `work_date`, `shift` (`1st`, `2nd`, or `3rd`; numeric `1`, `2`, and `3` are normalized), `work_items`, and optional `entry_uuid`, `doubled`, `supervisor`, `worked_with`, `notes` |
 | `/work-log/{entry_uuid}` | `PUT` | Update one work-log entry owned by the authenticated member. | `Authorization: Bearer <token>` header plus the same body fields as create |
@@ -134,6 +141,8 @@ These controls write the meta key configured in the settings page so you can ren
 ## Development
 
 - Lint PHP before committing: `php -l 'LL706 Auth API.php'`.
+- Restore Credentials uses the bundled MIT-licensed `lbuchs/webauthn` 2.2.0 library. Only the public key is stored by this plugin; Android handles private-key backup and device transfer. Password changes, app logout, account blocking, and global token invalidation stop restore sign-ins. The built-in Android origin list contains the Play app-signing certificate. For a debug build, define `LL706_RESTORE_EXTRA_CERT_SHA256` in `wp-config.php` as an array of additional signing-certificate SHA-256 fingerprints.
+- To verify the complete flow, install the updated server before the app, sign in on an Android 9+ source device, and use Android Studio's **Backup App Data** and **Restore App Data** on a second device or emulator. Confirm the restored app reaches the signed-in screen without credentials, `/me` works with the new token, and explicit logout prevents another automatic sign-in. A local build needs its signing-certificate fingerprint in `LL706_RESTORE_EXTRA_CERT_SHA256`; the Play-signed build uses the built-in fingerprint.
 - GitHub update checks require the repository root to contain `LL706 Auth API.php` directly, not inside an extra nested plugin folder.
 - If GitHub returns 403 during update checks, define `LL706_AUTH_API_GITHUB_TOKEN` as a fine-grained GitHub token with read access to this repository. The generic `PLUGIN_UPDATE_GITHUB_TOKEN` constant or environment variable is also supported as a fallback.
 - To force all tokens invalid, bump the `token_version` option from the settings page.
@@ -142,6 +151,10 @@ These controls write the meta key configured in the settings page so you can ren
   (replace `ll706_approved` if you changed the meta key).
 
 ## Changelog
+
+### 0.9.18
+
+- Added Android zero-tap sign-in restoration backed by signed WebAuthn challenges and the existing approved-account token flow.
 
 ### 0.9.14
 
