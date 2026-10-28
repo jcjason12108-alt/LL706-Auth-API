@@ -18,6 +18,7 @@ WordPress plugin that powers the LL706 mobile and web apps with hardened login, 
 - Public `/login-info` endpoint for a remote-controlled, sanitized rich-text card on the AskBruno login screen.
 - Per-user work-log storage with authenticated create, read, update, and soft-delete endpoints.
 - Per-user work-log reminder preferences with authenticated read/update endpoints for app-local scheduling.
+- Shared Barstow LMIT weather by work date, cached in WordPress and refreshed from Open-Meteo without member GPS or work-log data leaving the server.
 - Public Android Digital Asset Links document at `/.well-known/assetlinks.json` so supported password managers can share saved website credentials with the Play-signed AskBruno app.
 - Android Restore Credentials endpoints that verify a transferred restore key and issue a new short-lived app token.
 - Admin settings page with separate Dashboard Form Card, Login History, Overview, and Settings tabs.
@@ -58,8 +59,13 @@ All routes live under the namespace `ll706/v1`.
 | `/work-log/{entry_uuid}` | `DELETE` | Soft-delete one work-log entry owned by the authenticated member. | `Authorization: Bearer <token>` header |
 | `/work-log-reminder` | `GET` | Return the authenticated member’s work-log reminder settings. | `Authorization: Bearer <token>` header |
 | `/work-log-reminder` | `PUT` | Save the authenticated member’s work-log reminder settings. | `Authorization: Bearer <token>` header plus optional `enabled`, `days`, `time`, and `timezone` |
+| `/work-log-weather` | `GET` | Return Barstow LMIT weather for a work date, or `weather: null` when unavailable. | `Authorization: Bearer <token>` header plus `date=YYYY-MM-DD` query parameter |
 
 Work-log reminder settings are stored as one per-user WordPress user-meta record. The app is responsible for scheduling local notifications; the API does not create or send reminder notifications.
+
+Weather uses the fixed worksite at 200 North Avenue H, Barstow, CA 92311. The response includes the daily high and low in °F, mean relative humidity in percent, maximum wind speed in mph, and `status` (`forecast` for today or `historical` for past dates). The weather is shared by date, not attached to a member's work-log row. A member with work-log backup disabled can request weather for a local-only entry without uploading that entry. Open-Meteo receives only the worksite coordinates and requested date. The response supplies `source_url` and `license_url`; the app must show Open-Meteo attribution near weather information and explain it in Work Log Info.
+
+The plugin creates a separate weather cache table on activation or upgrade. WP-Cron schedules a daily refresh for 9:00 a.m. Pacific, covering the last seven days and today's forecast, and backfills earlier dates in 30-day chunks beginning with March 27, 2026 or the earliest server work-log date. WP-Cron runs when WordPress receives traffic, so an event may run later than its scheduled time. A requested date that is not cached can also be fetched on demand. Weather fetch or cache failures return `weather: null` or the last cached value; they do not change existing work-log entries.
 
 ## Android credential sharing
 
@@ -151,6 +157,11 @@ These controls write the meta key configured in the settings page so you can ren
   (replace `ll706_approved` if you changed the meta key).
 
 ## Changelog
+
+### 0.9.20
+
+- Added authenticated Barstow LMIT weather lookup, a separate daily weather cache, historical backfill, and a daily WP-Cron refresh.
+- Kept work-log records and backup preferences independent of weather; app-local entries can look up weather by date.
 
 ### 0.9.19
 
