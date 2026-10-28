@@ -3,7 +3,7 @@
  * Plugin Name: LL706 Auth API
  * Plugin URI: https://github.com/jcjason12108-alt/LL706-Auth-API/
  * Description: WordPress login + manual approval + JWT auth for LL706 mobile/web apps.
- * Version: 0.9.19
+ * Version: 0.9.20
  * Requires at least: 6.0
  * Tested up to: 7.0
  * Requires PHP: 7.4
@@ -16,9 +16,10 @@
 if (!defined('ABSPATH')) exit;
 
 require_once __DIR__ . '/restore-credentials.php';
+require_once __DIR__ . '/work-log-weather.php';
 
 if (!defined('LL706_AUTH_API_VERSION')) {
-  define('LL706_AUTH_API_VERSION', '0.9.19');
+  define('LL706_AUTH_API_VERSION', '0.9.20');
 }
 
 require_once __DIR__ . '/plugin-update-checker/plugin-update-checker.php';
@@ -172,9 +173,13 @@ add_action('admin_notices', 'll706_auth_api_access_notice');
 add_action('admin_notices', 'll706_auth_api_log_notice');
 add_action('plugins_loaded', 'll706_auth_api_maybe_create_log_table');
 add_action('plugins_loaded', 'll706_auth_maybe_upgrade_work_log_db');
+add_action('plugins_loaded', 'll706_auth_weather_maybe_setup');
+add_action('plugins_loaded', 'll706_auth_weather_ensure_daily_schedule');
 add_action('plugins_loaded', 'll706_auth_api_ensure_cleanup_schedule');
 add_action('plugins_loaded', 'll706_auth_api_start_wordfence_login_buffer', 0);
 add_action('ll706_auth_api_daily_cleanup', 'll706_auth_api_run_log_cleanup');
+add_action('ll706_auth_weather_daily', 'll706_auth_weather_run_daily');
+add_action('ll706_auth_weather_backfill', 'll706_auth_weather_run_backfill');
 ll706_auth_api_start_wordfence_login_buffer();
 
 function ll706_auth_api_defaults() {
@@ -744,12 +749,15 @@ function ll706_auth_api_get_current_tab() {
 function ll706_auth_api_activate() {
   ll706_auth_api_maybe_create_log_table();
   ll706_auth_setup_work_logs_table();
+  ll706_auth_weather_setup_table();
+  ll706_auth_weather_ensure_daily_schedule();
   ll706_auth_api_ensure_cleanup_schedule();
   ll706_auth_api_run_log_cleanup();
 }
 
 function ll706_auth_api_deactivate() {
   ll706_auth_api_clear_cleanup_schedule();
+  ll706_auth_weather_deactivate();
 }
 
 function ll706_auth_api_log_table_name() {
@@ -768,6 +776,7 @@ function ll706_auth_api_get_table_count($table_name) {
   $allowed_tables = [
     ll706_auth_api_log_table_name(),
     ll706_auth_work_logs_table_name(),
+    ll706_auth_weather_table_name(),
   ];
 
   if (!in_array($table_name, $allowed_tables, true)) {
@@ -1302,6 +1311,12 @@ switch ($tab) {
 }
 
 function ll706_auth_api_render_overview_tab($opts) {
+  $weather_count = ll706_auth_api_get_table_count(ll706_auth_weather_table_name());
+  $weather_cursor = get_option('ll706_auth_weather_backfill_cursor', '');
+  $weather_complete = get_option('ll706_auth_weather_backfill_complete', '');
+  $weather_status = $weather_cursor ? 'Backfilling from ' . $weather_cursor : ($weather_complete ? 'Backfill complete' : 'Backfill pending');
+  $weather_last_run = get_option('ll706_auth_weather_last_run', '');
+  $weather_last_status = get_option('ll706_auth_weather_last_status', '');
 ?>
 <h2>How This Plugin Works</h2>
 <p>The app logs in through the REST API endpoint <code>/wp-json/ll706/v1/login</code>. Users can log in with either their username or email address, and a successful login returns a signed JWT token for the app to use on later requests.</p>
@@ -1327,6 +1342,10 @@ function ll706_auth_api_render_overview_tab($opts) {
     <tr>
       <th>Retention</th>
       <td>Login rows are cleaned up daily by WordPress cron based on the retention period set in the <strong>Settings</strong> tab. Setting retention to <code>0</code> disables automatic cleanup.</td>
+    </tr>
+    <tr>
+      <th>Work Log Weather</th>
+      <td>Barstow LMIT weather is shared by work date and sourced from <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer">Open-Meteo</a>. Stored days: <?php echo esc_html(number_format_i18n($weather_count)); ?>. <?php echo esc_html($weather_status); ?>. Last daily refresh (UTC): <?php echo esc_html($weather_last_run ?: 'Pending'); ?>. Refresh status: <?php echo esc_html($weather_last_status ?: 'Pending'); ?>. WP-Cron runs on site traffic.</td>
     </tr>
   </tbody>
 </table>
@@ -1968,6 +1987,12 @@ add_action('rest_api_init', function () {
   register_rest_route('ll706/v1', '/work-log-reminder', [
     'methods'  => 'PUT',
     'callback' => 'll706_auth_work_log_reminder_update',
+    'permission_callback' => 'll706_auth_api_require_bearer_token',
+  ]);
+
+  register_rest_route('ll706/v1', '/work-log-weather', [
+    'methods'  => 'GET',
+    'callback' => 'll706_auth_weather_rest_get',
     'permission_callback' => 'll706_auth_api_require_bearer_token',
   ]);
 });
