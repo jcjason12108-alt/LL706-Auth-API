@@ -10,7 +10,7 @@
 if (!defined('ABSPATH')) exit;
 
 if (!defined('LL706_WORK_LOG_PHOTO_DB_VERSION')) {
-  define('LL706_WORK_LOG_PHOTO_DB_VERSION', '1.0.0');
+  define('LL706_WORK_LOG_PHOTO_DB_VERSION', '1.0.1');
 }
 
 if (!defined('LL706_WORK_LOG_PHOTO_MAX_BYTES')) {
@@ -29,6 +29,7 @@ add_action('rest_api_init', 'll706_auth_photo_register_routes');
 add_filter('rest_pre_serve_request', 'll706_auth_photo_serve_private_file', 10, 4);
 add_action('ll706_auth_api_daily_cleanup', 'll706_auth_photo_purge_deleted');
 add_action('delete_user', 'll706_auth_photo_delete_for_user');
+add_action('deleted_user', 'll706_auth_photo_remove_deleted_user_tombstones');
 
 function ll706_auth_photo_table_name() {
   global $wpdb;
@@ -58,13 +59,17 @@ function ll706_auth_photo_setup_table() {
     sha256 char(64) NOT NULL,
     created_at datetime NOT NULL,
     deleted_at datetime NULL DEFAULT NULL,
-    PRIMARY KEY (id),
+    file_purged_at datetime NULL DEFAULT NULL,
+    PRIMARY KEY  (id),
     UNIQUE KEY user_photo_uuid (user_id, photo_uuid),
-    KEY user_entry_deleted (user_id, entry_uuid, deleted_at)
+    KEY user_entry_deleted (user_id, entry_uuid, deleted_at),
+    KEY pending_purge (deleted_at, file_purged_at)
   ) {$charset_collate};";
 
   dbDelta($sql);
-  if ($wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table)) === $table) {
+  $has_table = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table)) === $table;
+  $has_purge_column = $has_table && $wpdb->get_var($wpdb->prepare("SHOW COLUMNS FROM {$table} LIKE %s", 'file_purged_at')) === 'file_purged_at';
+  if ($has_purge_column) {
     update_option('ll706_work_log_photo_db_version', LL706_WORK_LOG_PHOTO_DB_VERSION, false);
   }
 }
@@ -75,6 +80,10 @@ function ll706_auth_photo_setup_table() {
  * through another virtual host and that backups include it.
  */
 function ll706_auth_photo_storage_root($needs_write = false) {
+  if (get_option('ll706_work_log_photo_db_version', '') !== LL706_WORK_LOG_PHOTO_DB_VERSION) {
+    return new WP_Error('photo_schema_unavailable', 'Photo storage database upgrade is incomplete.', ['status' => 503]);
+  }
+
   $configured = defined('LL706_WORK_LOG_PHOTO_DIR')
     ? trim((string) LL706_WORK_LOG_PHOTO_DIR)
     : '';
@@ -129,6 +138,22 @@ function ll706_auth_photo_error($code, $message, $status) {
   return ll706_auth_error_response(new WP_Error($code, $message, ['status' => $status]));
 }
 
+/** Serialize each member's photo writes so count and byte limits are atomic. */
+function ll706_auth_photo_with_user_lock($user_id, $callback) {
+  global $wpdb;
+  $lock_name = 'll706_photo_' . substr(sha1(ll706_auth_photo_table_name()), 0, 16) . '_' . (int) $user_id;
+  $locked = $wpdb->get_var($wpdb->prepare('SELECT GET_LOCK(%s, 10)', $lock_name));
+  if ((int) $locked !== 1) {
+    return ll706_auth_photo_error('photo_storage_busy', 'Photo storage is busy. Please retry.', 503);
+  }
+
+  try {
+    return $callback();
+  } finally {
+    $wpdb->get_var($wpdb->prepare('SELECT RELEASE_LOCK(%s)', $lock_name));
+  }
+}
+
 function ll706_auth_photo_authorized_user(WP_REST_Request $request) {
   $payload = ll706_auth_get_current_user_from_request($request);
   return is_wp_error($payload) ? $payload : (int) $payload['data']['user_id'];
@@ -151,6 +176,13 @@ function ll706_auth_photo_format_row($row) {
     'byte_count' => (int) $row['byte_count'],
     'sha256' => (string) $row['sha256'],
     'created_at' => gmdate('c', strtotime((string) $row['created_at'] . ' UTC')),
+  ];
+}
+
+function ll706_auth_photo_format_deleted_row($row) {
+  return [
+    'photo_uuid' => (string) $row['photo_uuid'],
+    'entry_uuid' => (string) $row['entry_uuid'],
   ];
 }
 
@@ -207,12 +239,20 @@ function ll706_auth_photo_list(WP_REST_Request $request) {
     "SELECT p.* FROM {$photos} p INNER JOIN {$logs} w ON w.user_id = p.user_id AND w.entry_uuid = p.entry_uuid WHERE p.user_id = %d AND p.deleted_at IS NULL AND w.deleted_at IS NULL ORDER BY p.created_at, p.id",
     $user_id
   ), ARRAY_A);
+  $deleted_rows = $wpdb->get_results($wpdb->prepare(
+    "SELECT p.entry_uuid, p.photo_uuid FROM {$photos} p INNER JOIN {$logs} w ON w.user_id = p.user_id AND w.entry_uuid = p.entry_uuid WHERE p.user_id = %d AND p.deleted_at IS NOT NULL AND w.deleted_at IS NULL ORDER BY p.id",
+    $user_id
+  ), ARRAY_A);
 
-  if ($rows === null) {
+  if ($rows === null || $deleted_rows === null) {
     return ll706_auth_photo_error('photo_list_failed', 'Unable to list Work Log photos.', 500);
   }
 
-  $response = new WP_REST_Response(['ok' => true, 'photos' => array_map('ll706_auth_photo_format_row', $rows)], 200);
+  $response = new WP_REST_Response([
+    'ok' => true,
+    'photos' => array_map('ll706_auth_photo_format_row', $rows),
+    'deleted_photos' => array_map('ll706_auth_photo_format_deleted_row', $deleted_rows),
+  ], 200);
   $response->header('Cache-Control', 'private, no-store');
   return $response;
 }
@@ -250,6 +290,18 @@ function ll706_auth_photo_upload(WP_REST_Request $request) {
 
   $sha256 = hash_file('sha256', $source);
   if ($sha256 === false) return ll706_auth_photo_error('photo_upload_invalid', 'Unable to verify the photo.', 400);
+
+  return ll706_auth_photo_with_user_lock($user_id, function () use ($request, $user_id, $entry_uuid, $photo_uuid, $root, $size, $source, $sha256) {
+    return ll706_auth_photo_upload_under_lock($request, $user_id, $entry_uuid, $photo_uuid, $root, $size, $source, $sha256);
+  });
+}
+
+function ll706_auth_photo_upload_under_lock($request, $user_id, $entry_uuid, $photo_uuid, $root, $size, $source, $sha256) {
+  global $wpdb;
+  // The entry may have been removed while the uploaded JPEG was validated.
+  if (!ll706_auth_photo_owned_entry($user_id, $entry_uuid)) {
+    return ll706_auth_photo_error('work_log_not_found', 'Work Log entry was not found.', 404);
+  }
 
   $table = ll706_auth_photo_table_name();
   $existing = $wpdb->get_row($wpdb->prepare(
@@ -443,6 +495,13 @@ function ll706_auth_photo_delete_for_entry($user_id, $entry_uuid) {
     'deleted_at' => null,
   ], ['%s'], ['%d', '%s', '%s']);
   ll706_auth_photo_purge_deleted();
+  // A deleted Work Log cannot be recreated with the same UUID, so its
+  // already-purged photo tombstones are no longer needed.
+  $wpdb->query($wpdb->prepare(
+    "DELETE FROM {$table} WHERE user_id = %d AND entry_uuid = %s AND deleted_at IS NOT NULL AND file_purged_at IS NOT NULL",
+    (int) $user_id,
+    $entry_uuid
+  ));
 }
 
 function ll706_auth_photo_delete_for_user($user_id) {
@@ -455,6 +514,16 @@ function ll706_auth_photo_delete_for_user($user_id) {
   ll706_auth_photo_purge_deleted();
 }
 
+function ll706_auth_photo_remove_deleted_user_tombstones($user_id) {
+  global $wpdb;
+  $table = ll706_auth_photo_table_name();
+  // Pending files keep their rows until a later cleanup can remove the bytes.
+  $wpdb->query($wpdb->prepare(
+    "DELETE FROM {$table} WHERE user_id = %d AND deleted_at IS NOT NULL AND file_purged_at IS NOT NULL",
+    (int) $user_id
+  ));
+}
+
 function ll706_auth_photo_purge_deleted() {
   global $wpdb;
   $root = ll706_auth_photo_storage_root(true);
@@ -465,11 +534,16 @@ function ll706_auth_photo_purge_deleted() {
   // Repair deletion markers if a Work Log was removed while storage was down.
   $wpdb->query("UPDATE {$photos} p LEFT JOIN {$logs} w ON w.user_id = p.user_id AND w.entry_uuid = p.entry_uuid SET p.deleted_at = UTC_TIMESTAMP() WHERE p.deleted_at IS NULL AND (w.id IS NULL OR w.deleted_at IS NOT NULL)");
 
-  $rows = $wpdb->get_results("SELECT id, photo_uuid FROM {$photos} WHERE deleted_at IS NOT NULL ORDER BY id LIMIT 100", ARRAY_A);
+  $rows = $wpdb->get_results("SELECT p.id, p.user_id, p.photo_uuid, w.id AS entry_id, w.deleted_at AS entry_deleted_at FROM {$photos} p LEFT JOIN {$logs} w ON w.user_id = p.user_id AND w.entry_uuid = p.entry_uuid WHERE p.deleted_at IS NOT NULL AND p.file_purged_at IS NULL ORDER BY p.id LIMIT 100", ARRAY_A);
   foreach ((array) $rows as $row) {
     $path = ll706_auth_photo_path($root, $row['photo_uuid']);
-    if (is_file($path) && !@unlink($path)) continue;
-    $wpdb->delete($photos, ['id' => (int) $row['id']], ['%d']);
+    if ((file_exists($path) || is_link($path)) && !@unlink($path)) continue;
+    if (!get_user_by('id', (int) $row['user_id']) || empty($row['entry_id']) || !empty($row['entry_deleted_at'])) {
+      $wpdb->delete($photos, ['id' => (int) $row['id']], ['%d']);
+    } else {
+      // Keep the UUID as a tombstone so a stale device cannot upload it again.
+      $wpdb->update($photos, ['file_purged_at' => current_time('mysql', true)], ['id' => (int) $row['id'], 'file_purged_at' => null], ['%s'], ['%d', '%s']);
+    }
   }
 }
 
@@ -478,7 +552,7 @@ function ll706_auth_photo_render_admin_tab() {
   global $wpdb;
   $table = ll706_auth_photo_table_name();
   $stats = $wpdb->get_row("SELECT COUNT(*) AS total, COALESCE(SUM(byte_count), 0) AS bytes FROM {$table} WHERE deleted_at IS NULL", ARRAY_A);
-  $pending = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$table} WHERE deleted_at IS NOT NULL");
+  $pending = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$table} WHERE deleted_at IS NOT NULL AND file_purged_at IS NULL");
   $root = ll706_auth_photo_storage_root(true);
   $status = is_wp_error($root) ? $root->get_error_message() : 'Ready';
   ?>

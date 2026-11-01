@@ -3,7 +3,7 @@
  * Plugin Name: LL706 Auth API
  * Plugin URI: https://github.com/jcjason12108-alt/LL706-Auth-API/
  * Description: WordPress login + manual approval + JWT auth for LL706 mobile/web apps.
- * Version: 0.9.22
+ * Version: 0.9.23
  * Requires at least: 6.0
  * Tested up to: 7.0
  * Requires PHP: 7.4
@@ -20,7 +20,7 @@ require_once __DIR__ . '/work-log-weather.php';
 require_once __DIR__ . '/work-log-photos.php';
 
 if (!defined('LL706_AUTH_API_VERSION')) {
-  define('LL706_AUTH_API_VERSION', '0.9.22');
+  define('LL706_AUTH_API_VERSION', '0.9.23');
 }
 
 require_once __DIR__ . '/plugin-update-checker/plugin-update-checker.php';
@@ -1403,7 +1403,7 @@ function ll706_auth_api_render_overview_tab($opts) {
     </tr>
     <tr>
       <td><code>/work-log-photos</code> and <code>/work-log/{entry_uuid}/photos</code></td>
-      <td>List photo metadata and upload JPEGs for the authenticated member's saved entries.</td>
+      <td>List photo metadata and deletion records, and upload JPEGs for the authenticated member's saved entries. Deleted photo UUIDs cannot be uploaded again.</td>
     </tr>
     <tr>
       <td><code>/work-log/{entry_uuid}/photos/{photo_uuid}</code></td>
@@ -3411,25 +3411,28 @@ function ll706_auth_work_log_delete(WP_REST_Request $req) {
 
   $user_id = (int) $payload['data']['user_id'];
   $entry_uuid = sanitize_text_field(wp_unslash((string) $req['entry_uuid']));
-  $deleted = $wpdb->update(
-    ll706_auth_work_logs_table_name(),
-    ['deleted_at' => current_time('mysql')],
-    ['user_id' => $user_id, 'entry_uuid' => $entry_uuid, 'deleted_at' => null],
-    ['%s'],
-    ['%d', '%s', '%s']
-  );
+  return ll706_auth_photo_with_user_lock($user_id, function () use ($user_id, $entry_uuid) {
+    global $wpdb;
+    $deleted = $wpdb->update(
+      ll706_auth_work_logs_table_name(),
+      ['deleted_at' => current_time('mysql')],
+      ['user_id' => $user_id, 'entry_uuid' => $entry_uuid, 'deleted_at' => null],
+      ['%s'],
+      ['%d', '%s', '%s']
+    );
 
-  if ($deleted === false) {
-    return ll706_auth_error_response(new WP_Error('work_log_delete_failed', 'Unable to delete work-log entry.', ['status' => 500]));
-  }
+    if ($deleted === false) {
+      return ll706_auth_error_response(new WP_Error('work_log_delete_failed', 'Unable to delete work-log entry.', ['status' => 500]));
+    }
 
-  if ($deleted === 0) {
-    return ll706_auth_error_response(new WP_Error('work_log_not_found', 'Work-log entry was not found.', ['status' => 404]));
-  }
+    if ($deleted === 0) {
+      return ll706_auth_error_response(new WP_Error('work_log_not_found', 'Work-log entry was not found.', ['status' => 404]));
+    }
 
-  ll706_auth_photo_delete_for_entry($user_id, $entry_uuid);
+    ll706_auth_photo_delete_for_entry($user_id, $entry_uuid);
 
-  return new WP_REST_Response(['ok' => true], 200);
+    return new WP_REST_Response(['ok' => true], 200);
+  });
 }
 
 /**
