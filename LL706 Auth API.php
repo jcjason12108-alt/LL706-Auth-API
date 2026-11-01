@@ -3,7 +3,7 @@
  * Plugin Name: LL706 Auth API
  * Plugin URI: https://github.com/jcjason12108-alt/LL706-Auth-API/
  * Description: WordPress login + manual approval + JWT auth for LL706 mobile/web apps.
- * Version: 0.9.20
+ * Version: 0.9.21
  * Requires at least: 6.0
  * Tested up to: 7.0
  * Requires PHP: 7.4
@@ -17,9 +17,10 @@ if (!defined('ABSPATH')) exit;
 
 require_once __DIR__ . '/restore-credentials.php';
 require_once __DIR__ . '/work-log-weather.php';
+require_once __DIR__ . '/work-log-photos.php';
 
 if (!defined('LL706_AUTH_API_VERSION')) {
-  define('LL706_AUTH_API_VERSION', '0.9.20');
+  define('LL706_AUTH_API_VERSION', '0.9.21');
 }
 
 require_once __DIR__ . '/plugin-update-checker/plugin-update-checker.php';
@@ -118,12 +119,14 @@ function ll706_auth_api_serve_android_asset_links() {
  * =====================================================
  */
 add_action('admin_menu', function () {
-  add_options_page(
+  add_menu_page(
     'LL706 Auth API',
     'LL706 Auth API',
     'manage_options',
     'll706-auth-api',
-    'll706_auth_api_settings_page'
+    'll706_auth_api_settings_page',
+    'dashicons-shield-alt',
+    66
   );
 });
 
@@ -173,6 +176,7 @@ add_action('admin_notices', 'll706_auth_api_access_notice');
 add_action('admin_notices', 'll706_auth_api_log_notice');
 add_action('plugins_loaded', 'll706_auth_api_maybe_create_log_table');
 add_action('plugins_loaded', 'll706_auth_maybe_upgrade_work_log_db');
+add_action('plugins_loaded', 'll706_auth_photo_maybe_setup_table');
 add_action('plugins_loaded', 'll706_auth_weather_maybe_setup');
 add_action('plugins_loaded', 'll706_auth_weather_ensure_daily_schedule');
 add_action('plugins_loaded', 'll706_auth_api_ensure_cleanup_schedule');
@@ -673,7 +677,7 @@ function ll706_auth_api_admin_page_url($tab = 'dashboard-form', $args = []) {
     'tab'  => $tab,
   ], $args);
 
-  return add_query_arg($params, admin_url('options-general.php'));
+  return add_query_arg($params, admin_url('admin.php'));
 }
 
 function ll706_auth_api_handle_check_updates() {
@@ -684,7 +688,7 @@ function ll706_auth_api_handle_check_updates() {
   check_admin_referer('ll706_auth_api_check_updates');
 
   $return_tab = isset($_POST['return_tab']) ? sanitize_key(wp_unslash($_POST['return_tab'])) : 'dashboard-form';
-  if (!in_array($return_tab, ['dashboard-form', 'login-info', 'history', 'overview', 'settings'], true)) {
+  if (!in_array($return_tab, ['dashboard-form', 'login-info', 'history', 'photos', 'overview', 'settings'], true)) {
     $return_tab = 'dashboard-form';
   }
 
@@ -739,7 +743,7 @@ function ll706_auth_api_handle_check_updates() {
 function ll706_auth_api_get_current_tab() {
   $tab = isset($_GET['tab']) ? sanitize_key(wp_unslash($_GET['tab'])) : 'dashboard-form';
 
-  if (!in_array($tab, ['dashboard-form', 'login-info', 'history', 'overview', 'settings'], true)) {
+  if (!in_array($tab, ['dashboard-form', 'login-info', 'history', 'photos', 'overview', 'settings'], true)) {
     return 'dashboard-form';
   }
 
@@ -749,6 +753,7 @@ function ll706_auth_api_get_current_tab() {
 function ll706_auth_api_activate() {
   ll706_auth_api_maybe_create_log_table();
   ll706_auth_setup_work_logs_table();
+  ll706_auth_photo_setup_table();
   ll706_auth_weather_setup_table();
   ll706_auth_weather_ensure_daily_schedule();
   ll706_auth_api_ensure_cleanup_schedule();
@@ -1136,7 +1141,7 @@ function ll706_auth_api_log_notice() {
   if (!isset($_GET['ll706_log_cleared'])) return;
 
   $screen = function_exists('get_current_screen') ? get_current_screen() : null;
-  if ($screen && $screen->id !== 'settings_page_ll706-auth-api') return;
+  if ($screen && $screen->id !== 'toplevel_page_ll706-auth-api') return;
 
   echo '<div class="notice notice-success is-dismissible"><p>';
   echo esc_html('LL706 login log cleared.');
@@ -1280,6 +1285,7 @@ if ($update_check_status === 'available') {
   <a href="<?php echo esc_url(ll706_auth_api_admin_page_url('dashboard-form')); ?>" class="nav-tab <?php echo $tab === 'dashboard-form' ? 'nav-tab-active' : ''; ?>">Dashboard Form Card</a>
   <a href="<?php echo esc_url(ll706_auth_api_admin_page_url('login-info')); ?>" class="nav-tab <?php echo $tab === 'login-info' ? 'nav-tab-active' : ''; ?>">Login Information Card</a>
   <a href="<?php echo esc_url(ll706_auth_api_admin_page_url('history')); ?>" class="nav-tab <?php echo $tab === 'history' ? 'nav-tab-active' : ''; ?>">Login History</a>
+  <a href="<?php echo esc_url(ll706_auth_api_admin_page_url('photos')); ?>" class="nav-tab <?php echo $tab === 'photos' ? 'nav-tab-active' : ''; ?>">Work Log Photos</a>
   <a href="<?php echo esc_url(ll706_auth_api_admin_page_url('overview')); ?>" class="nav-tab <?php echo $tab === 'overview' ? 'nav-tab-active' : ''; ?>">Overview</a>
   <a href="<?php echo esc_url(ll706_auth_api_admin_page_url('settings')); ?>" class="nav-tab <?php echo $tab === 'settings' ? 'nav-tab-active' : ''; ?>">Settings</a>
 </nav>
@@ -1297,6 +1303,9 @@ switch ($tab) {
     break;
   case 'history':
     ll706_auth_api_render_history_tab($login_summaries);
+    break;
+  case 'photos':
+    ll706_auth_photo_render_admin_tab();
     break;
   case 'overview':
     ll706_auth_api_render_overview_tab($opts);
@@ -3396,6 +3405,8 @@ function ll706_auth_work_log_delete(WP_REST_Request $req) {
   if ($deleted === 0) {
     return ll706_auth_error_response(new WP_Error('work_log_not_found', 'Work-log entry was not found.', ['status' => 404]));
   }
+
+  ll706_auth_photo_delete_for_entry($user_id, $entry_uuid);
 
   return new WP_REST_Response(['ok' => true], 200);
 }
