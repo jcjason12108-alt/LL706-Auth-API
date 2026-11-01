@@ -4,7 +4,7 @@ Tags: authentication, jwt, rest api, member approval
 Requires at least: 6.0
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 0.9.21
+Stable tag: 0.9.22
 License: GPL-2.0-or-later
 
 WordPress login, manual approval, JWT auth, work-log, and work-log reminder REST endpoints for LL706 mobile and web apps.
@@ -14,6 +14,10 @@ WordPress login, manual approval, JWT auth, work-log, and work-log reminder REST
 LL706 Auth API powers LL706 mobile and web app authentication with hardened login, membership approval, JSON Web Token authentication, login history, remote AskBruno dashboard and login information cards, and member work-log endpoints.
 
 == Changelog ==
+
+= 0.9.22 =
+* Explained the single Work Log backup setting, private photo storage, member access, and deletion behavior in the admin Overview tab and GitHub README.
+* Clarified that compatible AskBruno builds upload photos while older builds remain entry-only.
 
 = 0.9.21 =
 * Moved LL706 Auth API to its own top-level WordPress admin menu.

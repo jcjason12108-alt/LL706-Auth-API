@@ -3,7 +3,7 @@
  * Plugin Name: LL706 Auth API
  * Plugin URI: https://github.com/jcjason12108-alt/LL706-Auth-API/
  * Description: WordPress login + manual approval + JWT auth for LL706 mobile/web apps.
- * Version: 0.9.21
+ * Version: 0.9.22
  * Requires at least: 6.0
  * Tested up to: 7.0
  * Requires PHP: 7.4
@@ -20,7 +20,7 @@ require_once __DIR__ . '/work-log-weather.php';
 require_once __DIR__ . '/work-log-photos.php';
 
 if (!defined('LL706_AUTH_API_VERSION')) {
-  define('LL706_AUTH_API_VERSION', '0.9.21');
+  define('LL706_AUTH_API_VERSION', '0.9.22');
 }
 
 require_once __DIR__ . '/plugin-update-checker/plugin-update-checker.php';
@@ -1356,8 +1356,17 @@ function ll706_auth_api_render_overview_tab($opts) {
       <th>Work Log Weather</th>
       <td>Barstow LMIT weather is shared by work date and sourced from <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer">Open-Meteo</a>. Stored days: <?php echo esc_html(number_format_i18n($weather_count)); ?>. <?php echo esc_html($weather_status); ?>. Last daily refresh (UTC): <?php echo esc_html($weather_last_run ?: 'Pending'); ?>. Refresh status: <?php echo esc_html($weather_last_status ?: 'Pending'); ?>. WP-Cron runs on site traffic.</td>
     </tr>
+    <tr>
+      <th>Work Log Photo Backup</th>
+      <td>Compatible AskBruno apps use the single <strong>Back Up Work Log</strong> setting for saved entries and their photos. Photos remain on the device and sync privately when backup is on. Draft photos stay on the device until the entry is saved. See <a href="<?php echo esc_url(ll706_auth_api_admin_page_url('photos')); ?>">Work Log Photos</a> for storage health and totals.</td>
+    </tr>
   </tbody>
 </table>
+
+<h2 style="margin-top: 24px;">How Photo Backup Works</h2>
+<p>Turning Work Log backup off stops future syncing; it does not remove entries or photos already backed up. When backup is on, deleting a saved photo or Work Log entry removes its backed-up copy. The app also offers a separate choice to delete both device and backed-up entries and photos.</p>
+<p>JPEG files are stored in the private <code>LL706_WORK_LOG_PHOTO_DIR</code> directory outside the web root. The database stores photo ownership and metadata, not the image bytes. Only the authenticated member can use the photo API to list, upload, download, or delete their photos; no public photo links are created. Administrators can see storage status, counts, bytes, and pending deletions in the <strong>Work Log Photos</strong> tab, but this plugin does not display photo contents.</p>
+<p>Each JPEG is limited to 5 MiB and 3000 pixels on its longest side. The defaults are 20 photos per entry and 1 GiB per member. Include the private photo directory in the site's backups. The plugin does not encrypt photo files at rest; disk and backup encryption depend on the host.</p>
 
 <h2 style="margin-top: 24px;">Quick Reference</h2>
 <table class="widefat striped" style="max-width: 1100px;">
@@ -1387,6 +1396,18 @@ function ll706_auth_api_render_overview_tab($opts) {
     <tr>
       <td><code>/me</code></td>
       <td>Validates the bearer token and returns the latest app user payload.</td>
+    </tr>
+    <tr>
+      <td><code>/work-log</code></td>
+      <td>Creates, lists, updates, and deletes the authenticated member's written Work Log entries.</td>
+    </tr>
+    <tr>
+      <td><code>/work-log-photos</code> and <code>/work-log/{entry_uuid}/photos</code></td>
+      <td>List photo metadata and upload JPEGs for the authenticated member's saved entries.</td>
+    </tr>
+    <tr>
+      <td><code>/work-log/{entry_uuid}/photos/{photo_uuid}</code></td>
+      <td>Privately download or delete one photo owned by the authenticated member.</td>
     </tr>
     <tr>
       <td>Users screen</td>
