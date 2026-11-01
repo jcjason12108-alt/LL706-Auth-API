@@ -482,6 +482,7 @@ function ll706_auth_photo_delete(WP_REST_Request $request) {
   $updated = $wpdb->update($table, ['deleted_at' => current_time('mysql', true)], ['id' => (int) $row['id'], 'deleted_at' => null], ['%s'], ['%d', '%s']);
   if ($updated !== 1) return ll706_auth_photo_error('photo_delete_failed', 'Unable to delete the photo.', 500);
 
+  do_action('ll706_auth_photo_deleted', (int) $row['id']);
   ll706_auth_photo_purge_deleted();
   return new WP_REST_Response(['ok' => true], 200);
 }
@@ -494,6 +495,7 @@ function ll706_auth_photo_delete_for_entry($user_id, $entry_uuid) {
     'entry_uuid' => $entry_uuid,
     'deleted_at' => null,
   ], ['%s'], ['%d', '%s', '%s']);
+  do_action('ll706_auth_photo_entry_deleted', (int) $user_id, $entry_uuid);
   ll706_auth_photo_purge_deleted();
   // A deleted Work Log cannot be recreated with the same UUID, so its
   // already-purged photo tombstones are no longer needed.
@@ -511,6 +513,7 @@ function ll706_auth_photo_delete_for_user($user_id) {
     'user_id' => (int) $user_id,
     'deleted_at' => null,
   ], ['%s'], ['%d', '%s']);
+  do_action('ll706_auth_photo_user_deleted', (int) $user_id);
   ll706_auth_photo_purge_deleted();
 }
 

@@ -3,7 +3,7 @@
  * Plugin Name: LL706 Auth API
  * Plugin URI: https://github.com/jcjason12108-alt/LL706-Auth-API/
  * Description: WordPress login + manual approval + JWT auth for LL706 mobile/web apps.
- * Version: 0.9.23
+ * Version: 0.9.24
  * Requires at least: 6.0
  * Tested up to: 7.0
  * Requires PHP: 7.4
@@ -18,9 +18,10 @@ if (!defined('ABSPATH')) exit;
 require_once __DIR__ . '/restore-credentials.php';
 require_once __DIR__ . '/work-log-weather.php';
 require_once __DIR__ . '/work-log-photos.php';
+require_once __DIR__ . '/work-log-lineups.php';
 
 if (!defined('LL706_AUTH_API_VERSION')) {
-  define('LL706_AUTH_API_VERSION', '0.9.23');
+  define('LL706_AUTH_API_VERSION', '0.9.24');
 }
 
 require_once __DIR__ . '/plugin-update-checker/plugin-update-checker.php';
@@ -754,6 +755,7 @@ function ll706_auth_api_activate() {
   ll706_auth_api_maybe_create_log_table();
   ll706_auth_setup_work_logs_table();
   ll706_auth_photo_setup_table();
+  ll706_lineup_setup_tables();
   ll706_auth_weather_setup_table();
   ll706_auth_weather_ensure_daily_schedule();
   ll706_auth_api_ensure_cleanup_schedule();
@@ -1360,13 +1362,21 @@ function ll706_auth_api_render_overview_tab($opts) {
       <th>Work Log Photo Backup</th>
       <td>Compatible AskBruno apps use the single <strong>Back Up Work Log</strong> setting for saved entries and their photos. Photos remain on the device and sync privately when backup is on. Draft photos stay on the device until the entry is saved. See <a href="<?php echo esc_url(ll706_auth_api_admin_page_url('photos')); ?>">Work Log Photos</a> for storage health and totals.</td>
     </tr>
+    <tr>
+      <th>Lineup Extraction</th>
+      <td>The optional n8n lineup service can inspect backed-up photos and save extracted lineup rows by Work Log date and shift. It is disabled until <code>LL706_LINEUP_SERVICE_KEY</code> is configured. Published lineup records include names written on the sheet; they contain no private Work Log notes or tasks.</td>
+    </tr>
   </tbody>
 </table>
 
 <h2 style="margin-top: 24px;">How Photo Backup Works</h2>
 <p>Turning Work Log backup off stops future syncing; it does not remove entries or photos already backed up. When backup is on, deleting a saved photo or Work Log entry removes its backed-up copy. The app also offers a separate choice to delete both device and backed-up entries and photos.</p>
-<p>JPEG files are stored in the private <code>LL706_WORK_LOG_PHOTO_DIR</code> directory outside the web root. The database stores photo ownership and metadata, not the image bytes. Only the authenticated member can use the photo API to list, upload, download, or delete their photos; no public photo links are created. Administrators can see storage status, counts, bytes, and pending deletions in the <strong>Work Log Photos</strong> tab, but this plugin does not display photo contents.</p>
+<p>JPEG files are stored in the private <code>LL706_WORK_LOG_PHOTO_DIR</code> directory outside the web root. The database stores photo ownership and metadata, not the image bytes. The original member photo API remains owner-only. A separately configured n8n service can read photos for lineup extraction, and approved members can view photos whose lineup extraction is published. Other Work Log photos remain private. Administrators can see storage status, counts, bytes, and pending deletions in the <strong>Work Log Photos</strong> tab.</p>
 <p>Each JPEG is limited to 5 MiB and 3000 pixels on its longest side. The defaults are 20 photos per entry and 1 GiB per member. Include the private photo directory in the site's backups. The plugin does not encrypt photo files at rest; disk and backup encryption depend on the host.</p>
+
+<h2 style="margin-top: 24px;">Lineup Service</h2>
+<p>Configure a separate 32-character-or-longer <code>LL706_LINEUP_SERVICE_KEY</code> in protected server configuration before connecting n8n. The service can list pending photos, download their private bytes, save extracted lineup rows, and search only published lineup records. A missing printed date or shift uses the source Work Log date or shift. Conflicting printed values require review before publication. Exact image and normalized-content duplicates share a lineup key; a changed lineup for the same date and shift remains a separate record.</p>
+<p>This service does not expose written Work Logs. Its <code>user_id</code> search filter selects lineups uploaded by that WordPress user; it does not verify the person asking AskBruno. Keep private Work Log questions disabled until chat authentication is added. Published lineup photo links open a WordPress login-protected viewer for approved members; app users may have to sign in on the website.</p>
 
 <h2 style="margin-top: 24px;">Quick Reference</h2>
 <table class="widefat striped" style="max-width: 1100px;">
@@ -1408,6 +1418,10 @@ function ll706_auth_api_render_overview_tab($opts) {
     <tr>
       <td><code>/work-log/{entry_uuid}/photos/{photo_uuid}</code></td>
       <td>Privately download or delete one photo owned by the authenticated member.</td>
+    </tr>
+    <tr>
+      <td><code>/lineup-service/*</code></td>
+      <td>Service-key-only photo intake, extraction storage, and published lineup search for a future n8n workflow. No Work Log notes are returned.</td>
     </tr>
     <tr>
       <td>Users screen</td>
