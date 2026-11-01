@@ -47,9 +47,9 @@ define('LL706_WORK_LOG_PHOTO_DIR', '/absolute/private/path/askbruno-work-log-pho
 
 Do not point this at `wp-content/uploads`, the plugin directory, or any other web-accessible path. The plugin refuses a path inside WordPress or the current web document root, but the host must confirm that no other virtual host exposes the chosen directory. Include the photo directory in site backups and verify a restore. The **Work Log Photos** admin tab reports whether the directory is ready, stored photo count and bytes, and pending file deletions. It does not display photo contents. Only compatible AskBruno app builds upload photos; older builds remain entry-only.
 
-Only JPEG uploads are accepted, up to 5 MiB and 3000 pixels on the longest side. Each entry can have up to 20 backed-up photos, and each member can use up to 1 GiB; both limits are overrideable with the `LL706_WORK_LOG_PHOTO_MAX_PER_ENTRY` and `LL706_WORK_LOG_PHOTO_MAX_USER_BYTES` constants. The apps already save compressed 2000-pixel JPEGs. Files are named by UUID in the private directory; the database stores member/entry ownership, the original local filename, caption, size, hash, and timestamps. The plugin does not encrypt files at rest; whether the host encrypts its disks and backups must be verified separately. Work Log deletion and WordPress user deletion queue associated photo files for removal. The existing daily cleanup job retries pending deletions if the storage directory was unavailable.
+Only JPEG uploads are accepted, up to 5 MiB and 3000 pixels on the longest side. Each entry can have up to 20 backed-up photos, and each member can use up to 1 GiB; both limits are overrideable with the `LL706_WORK_LOG_PHOTO_MAX_PER_ENTRY` and `LL706_WORK_LOG_PHOTO_MAX_USER_BYTES` constants. Uploads for one member are serialized so simultaneous requests cannot bypass those limits. The apps already save compressed 2000-pixel JPEGs. Files are named by UUID in the private directory; the database stores member/entry ownership, the original local filename, caption, size, hash, and timestamps. The plugin does not encrypt files at rest; whether the host encrypts its disks and backups must be verified separately. Work Log deletion and WordPress user deletion queue associated photo files for removal. The existing daily cleanup job retries pending deletions if the storage directory was unavailable.
 
-In compatible AskBruno builds, the single **Back Up Work Log** setting controls both written entries and saved photos. The app saves both on the device first, then syncs them privately when backup is on; draft photos stay on the device until the entry is saved. Turning backup off stops future syncing but leaves previously backed-up copies in the account. With backup on, deleting a photo or Work Log entry removes its remote copy; the app also offers a separate choice to delete device and backed-up entries and photos together. The photo API serves only the authenticated member's files and creates no public photo links. The plugin's Overview tab explains this behavior for administrators.
+In compatible AskBruno builds, the single **Back Up Work Log** setting controls both written entries and saved photos. The app saves both on the device first, then syncs them privately when backup is on; draft photos stay on the device until the entry is saved. Turning backup off stops future syncing but leaves previously-backed-up copies in the account. With backup on, deleting a photo or Work Log entry removes its remote copy; the app also offers a separate choice to delete device and backed-up entries and photos together. For an individual deleted photo, the plugin retains its UUID as a small deletion record while the Work Log entry exists, and compatible apps remove stale copies on other devices. This prevents an older device from re-uploading the deleted photo. The photo API serves only the authenticated member's files and creates no public photo links. The plugin's Overview tab explains this behavior for administrators.
 
 ## REST API
 
@@ -71,7 +71,7 @@ All routes live under the namespace `ll706/v1`.
 | `/work-log` | `POST` | Create a work-log entry for the authenticated member. | `Authorization: Bearer <token>` header plus `work_date`, `shift` (`1st`, `2nd`, or `3rd`; numeric `1`, `2`, and `3` are normalized), `work_items`, and optional `entry_uuid`, `doubled`, `supervisor`, `worked_with`, `notes` |
 | `/work-log/{entry_uuid}` | `PUT` | Update one work-log entry owned by the authenticated member. | `Authorization: Bearer <token>` header plus the same body fields as create |
 | `/work-log/{entry_uuid}` | `DELETE` | Soft-delete one work-log entry owned by the authenticated member. | `Authorization: Bearer <token>` header |
-| `/work-log-photos` | `GET` | List the authenticated member's photo backup metadata for active Work Logs. | `Authorization: Bearer <token>` header |
+| `/work-log-photos` | `GET` | List the authenticated member's active `photos` and `deleted_photos` UUID/entry pairs for active Work Logs. | `Authorization: Bearer <token>` header |
 | `/work-log/{entry_uuid}/photos` | `POST` | Upload one JPEG to a Work Log owned by the authenticated member. Repeating the same UUID and bytes is idempotent. | Bearer token; multipart `photo`, `photo_uuid`, optional `filename`, `caption`, `created_at` |
 | `/work-log/{entry_uuid}/photos/{photo_uuid}` | `GET` | Download the authenticated member's private JPEG. | `Authorization: Bearer <token>` header |
 | `/work-log/{entry_uuid}/photos/{photo_uuid}` | `DELETE` | Remove one backed-up photo and queue file cleanup. | `Authorization: Bearer <token>` header |
@@ -175,6 +175,11 @@ These controls write the meta key configured in the settings page so you can ren
   (replace `ll706_approved` if you changed the meta key).
 
 ## Changelog
+
+### 0.9.23
+
+- Kept photo deletion records and exposed them to compatible clients so deleted photos stay deleted across devices.
+- Serialized per-member photo uploads to enforce count and byte limits during simultaneous requests.
 
 ### 0.9.22
 
