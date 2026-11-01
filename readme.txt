@@ -4,7 +4,7 @@ Tags: authentication, jwt, rest api, member approval
 Requires at least: 6.0
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 0.9.20
+Stable tag: 0.9.21
 License: GPL-2.0-or-later
 
 WordPress login, manual approval, JWT auth, work-log, and work-log reminder REST endpoints for LL706 mobile and web apps.
@@ -14,6 +14,10 @@ WordPress login, manual approval, JWT auth, work-log, and work-log reminder REST
 LL706 Auth API powers LL706 mobile and web app authentication with hardened login, membership approval, JSON Web Token authentication, login history, remote AskBruno dashboard and login information cards, and member work-log endpoints.
 
 == Changelog ==
+
+= 0.9.21 =
+* Moved LL706 Auth API to its own top-level WordPress admin menu.
+* Added private Work Log photo backup routes and a storage-health tab. Mobile apps must be updated separately to upload photos.
 
 = 0.9.20 =
 * Added authenticated Barstow LMIT weather lookup with a separate cache, historical backfill, and a daily refresh from Open-Meteo.
@@ -29,7 +33,8 @@ LL706 Auth API powers LL706 mobile and web app authentication with hardened logi
 
 1. Upload the `ll706-auth-api` folder to `wp-content/plugins/`.
 2. Activate LL706 Auth API from Plugins in the WordPress dashboard.
-3. Open Settings > LL706 Auth API to configure the JWT secret, approval meta key, dashboard form card, login information card, token lifetimes, and login log retention.
+3. Open LL706 Auth API in the left admin menu to configure the JWT secret, approval meta key, dashboard form card, login information card, token lifetimes, and login log retention.
+4. To enable photo uploads, create a private writable directory outside the web root, add `LL706_WORK_LOG_PHOTO_DIR` with its absolute path to protected PHP configuration, and include it in site backups.
 
 == Frequently Asked Questions ==
 

@@ -17,12 +17,12 @@ WordPress plugin that powers the LL706 mobile and web apps with hardened login, 
 - Public `/dashboard-form` endpoint for a remote-controlled Ask Bruno dashboard form card.
 - Public `/login-info` endpoint for a remote-controlled, sanitized rich-text card on the AskBruno login screen.
 - Per-user work-log storage with authenticated create, read, update, and soft-delete endpoints.
+- Private Work Log photo backup endpoints with per-member access and a separate file-storage directory.
 - Per-user work-log reminder preferences with authenticated read/update endpoints for app-local scheduling.
 - Shared Barstow LMIT weather by work date, cached in WordPress and refreshed from Open-Meteo without member GPS or work-log data leaving the server.
 - Public Android Digital Asset Links document at `/.well-known/assetlinks.json` so supported password managers can share saved website credentials with the Play-signed AskBruno app.
 - Android Restore Credentials endpoints that verify a transferred restore key and issue a new short-lived app token.
-- Admin settings page with separate Dashboard Form Card, Login History, Overview, and Settings tabs.
-- Admin settings page with separate Dashboard Form Card, Login Information Card, Login History, Overview, and Settings tabs.
+- Top-level **LL706 Auth API** admin menu with Dashboard Form Card, Login Information Card, Login History, Work Log Photos, Overview, and Settings tabs.
 - Per-user app login summary showing each member’s latest successful app login, token status, IP, and user agent.
 - CSV export for the last-login summary.
 - Automatic login log retention cleanup with a configurable number of days.
@@ -34,8 +34,20 @@ WordPress plugin that powers the LL706 mobile and web apps with hardened login, 
 
 1. Copy the entire plugin directory into `wp-content/plugins/ll706-auth-api/` (or clone this repository there).
 2. In the WordPress dashboard, activate **LL706 Auth API** under *Plugins → Installed Plugins*.
-3. Open *Settings → LL706 Auth API* to configure the JWT secret, approval meta key, dashboard form card, login information card, token lifetimes, and login log retention. Changing the secret or the “Force Logout” button invalidates existing tokens.
+3. Open **LL706 Auth API** in the left admin menu to configure the JWT secret, approval meta key, dashboard form card, login information card, token lifetimes, and login log retention. Changing the secret or the “Force Logout” button invalidates existing tokens.
 4. Use the *Overview* tab for built-in documentation and the *Login History* tab for recent app login activity and CSV export.
+
+### Private Work Log photo storage
+
+Photo uploads are disabled until the server administrator creates a persistent, writable directory **outside the web server's document root** and configures it in `wp-config.php` (or another protected PHP configuration file):
+
+```php
+define('LL706_WORK_LOG_PHOTO_DIR', '/absolute/private/path/askbruno-work-log-photos');
+```
+
+Do not point this at `wp-content/uploads`, the plugin directory, or any other web-accessible path. The plugin refuses a path inside WordPress or the current web document root, but the host must confirm that no other virtual host exposes the chosen directory. Include the photo directory in site backups and verify a restore. The **Work Log Photos** admin tab reports whether the directory is ready, stored photo count and bytes, and pending file deletions. It does not display photo contents. The mobile apps must be updated to use the new endpoints before any photos will upload.
+
+Only JPEG uploads are accepted, up to 5 MiB and 3000 pixels on the longest side. Each entry can have up to 20 backed-up photos, and each member can use up to 1 GiB; both limits are overrideable with the `LL706_WORK_LOG_PHOTO_MAX_PER_ENTRY` and `LL706_WORK_LOG_PHOTO_MAX_USER_BYTES` constants. The apps already save compressed 2000-pixel JPEGs. Files are named by UUID in the private directory; the database stores member/entry ownership, the original local filename, caption, size, hash, and timestamps. The plugin does not encrypt files at rest; whether the host encrypts its disks and backups must be verified separately. Work Log deletion and WordPress user deletion queue associated photo files for removal. The existing daily cleanup job retries pending deletions if the storage directory was unavailable.
 
 ## REST API
 
@@ -57,6 +69,10 @@ All routes live under the namespace `ll706/v1`.
 | `/work-log` | `POST` | Create a work-log entry for the authenticated member. | `Authorization: Bearer <token>` header plus `work_date`, `shift` (`1st`, `2nd`, or `3rd`; numeric `1`, `2`, and `3` are normalized), `work_items`, and optional `entry_uuid`, `doubled`, `supervisor`, `worked_with`, `notes` |
 | `/work-log/{entry_uuid}` | `PUT` | Update one work-log entry owned by the authenticated member. | `Authorization: Bearer <token>` header plus the same body fields as create |
 | `/work-log/{entry_uuid}` | `DELETE` | Soft-delete one work-log entry owned by the authenticated member. | `Authorization: Bearer <token>` header |
+| `/work-log-photos` | `GET` | List the authenticated member's photo backup metadata for active Work Logs. | `Authorization: Bearer <token>` header |
+| `/work-log/{entry_uuid}/photos` | `POST` | Upload one JPEG to a Work Log owned by the authenticated member. Repeating the same UUID and bytes is idempotent. | Bearer token; multipart `photo`, `photo_uuid`, optional `filename`, `caption`, `created_at` |
+| `/work-log/{entry_uuid}/photos/{photo_uuid}` | `GET` | Download the authenticated member's private JPEG. | `Authorization: Bearer <token>` header |
+| `/work-log/{entry_uuid}/photos/{photo_uuid}` | `DELETE` | Remove one backed-up photo and queue file cleanup. | `Authorization: Bearer <token>` header |
 | `/work-log-reminder` | `GET` | Return the authenticated member’s work-log reminder settings. | `Authorization: Bearer <token>` header |
 | `/work-log-reminder` | `PUT` | Save the authenticated member’s work-log reminder settings. | `Authorization: Bearer <token>` header plus optional `enabled`, `days`, `time`, and `timezone` |
 | `/work-log-weather` | `GET` | Return Barstow LMIT weather for a work date, or `weather: null` when unavailable. | `Authorization: Bearer <token>` header plus `date=YYYY-MM-DD` query parameter |
@@ -157,6 +173,11 @@ These controls write the meta key configured in the settings page so you can ren
   (replace `ll706_approved` if you changed the meta key).
 
 ## Changelog
+
+### 0.9.21
+
+- Moved LL706 Auth API from Settings to its own top-level WordPress admin menu.
+- Added private, per-member Work Log photo storage routes and an admin storage-health tab. Photos remain local-only in existing mobile app releases until the apps adopt the routes.
 
 ### 0.9.20
 
