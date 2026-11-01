@@ -18,6 +18,7 @@ WordPress plugin that powers the LL706 mobile and web apps with hardened login, 
 - Public `/login-info` endpoint for a remote-controlled, sanitized rich-text card on the AskBruno login screen.
 - Per-user work-log storage with authenticated create, read, update, and soft-delete endpoints.
 - Private Work Log photo backup endpoints with per-member access and a separate file-storage directory.
+- Optional service-key-only lineup intake and WordPress storage for extracted rows from backed-up photos.
 - Per-user work-log reminder preferences with authenticated read/update endpoints for app-local scheduling.
 - Shared Barstow LMIT weather by work date, cached in WordPress and refreshed from Open-Meteo without member GPS or work-log data leaving the server.
 - Public Android Digital Asset Links document at `/.well-known/assetlinks.json` so supported password managers can share saved website credentials with the Play-signed AskBruno app.
@@ -51,6 +52,44 @@ Only JPEG uploads are accepted, up to 5 MiB and 3000 pixels on the longest side.
 
 In compatible AskBruno builds, the single **Back Up Work Log** setting controls both written entries and saved photos. The app saves both on the device first, then syncs them privately when backup is on; draft photos stay on the device until the entry is saved. Turning backup off stops future syncing but leaves previously-backed-up copies in the account. With backup on, deleting a photo or Work Log entry removes its remote copy; the app also offers a separate choice to delete device and backed-up entries and photos together. For an individual deleted photo, the plugin retains its UUID as a small deletion record while the Work Log entry exists, and compatible apps remove stale copies on other devices. This prevents an older device from re-uploading the deleted photo. The photo API serves only the authenticated member's files and creates no public photo links. The plugin's Overview tab explains this behavior for administrators.
 
+### Lineup service preparation
+
+The lineup service is disabled until a separate secret of at least 32 characters is added to protected server configuration. Store the matching value in an n8n credential, not in a workflow export or an app:
+
+```php
+define('LL706_LINEUP_SERVICE_KEY', 'replace-with-a-long-random-secret');
+```
+
+Its requests use `X-LL706-Lineup-Key` over HTTPS. This authenticates **n8n to WordPress**; it does not authenticate a member to AskBruno. The current app chat sends a user number but no proof that the caller owns it. Until chat authentication is added, do not use these routes to answer questions from private individual Work Logs or to expose private photo bytes to chat callers.
+
+The service lists active, unprocessed Work Log photos with their source `user_id`, `work_date`, and `shift`; downloads one private JPEG for extraction; and saves the result in WordPress lineup and unit tables. The source Work Log date and shift are used when the sheet does not show them. A conflicting printed date or shift cannot be published without review. `published` results require at least one unit; `needs_review`, `not_lineup`, and `retry` results are not searchable. The workflow should classify uncertain handwriting as `needs_review`, not invent a unit or name. Review tooling and the n8n workflow are separate follow-up work.
+
+Example extraction body (the omitted printed date falls back to the source Work Log date):
+
+```json
+{
+  "status": "published",
+  "printed_date": null,
+  "printed_shift": "1st",
+  "raw_text": "5433 ...",
+  "extraction_version": "lineup-v1",
+  "units": [
+    {
+      "unit_number": "5433",
+      "cover_figure": "1/F",
+      "work_to_do": "Inspect air leak",
+      "assigned_names": ["Example Name"]
+    }
+  ]
+}
+```
+
+Duplicate handling checks identical photo bytes for the same date and shift, then a normalized hash of the extracted rows. Different content for the same date and shift is retained as a separate revision. Each published result has a stable `lineup_key` for later Qdrant indexing; n8n must reconcile the `/lineup-service/index` active keys with vector points after photo deletion or reprocessing. The chat query endpoint requires `user_id` and returns only published lineup rows uploaded by that user, backed by active photos and Work Logs. This number does **not** verify ownership of the chat request or establish which person on the sheet is that member. No written Work Log notes or tasks are returned.
+
+Photos remain in private file storage. A published lineup result includes a `photo_url` that opens a WordPress login-protected viewer for approved members. The app may need the member to sign in on the website before the image opens. Unpublished Work Log photos are never available through this viewer.
+
+For local helper checks, run `php tests/lineup-smoke.php`. A WordPress staging site is still needed to verify table creation, service routes, photo viewing, and deletion before deployment.
+
 ## REST API
 
 All routes live under the namespace `ll706/v1`.
@@ -75,6 +114,11 @@ All routes live under the namespace `ll706/v1`.
 | `/work-log/{entry_uuid}/photos` | `POST` | Upload one JPEG to a Work Log owned by the authenticated member. Repeating the same UUID and bytes is idempotent. | Bearer token; multipart `photo`, `photo_uuid`, optional `filename`, `caption`, `created_at` |
 | `/work-log/{entry_uuid}/photos/{photo_uuid}` | `GET` | Download the authenticated member's private JPEG. | `Authorization: Bearer <token>` header |
 | `/work-log/{entry_uuid}/photos/{photo_uuid}` | `DELETE` | Remove one backed-up photo and queue file cleanup. | `Authorization: Bearer <token>` header |
+| `/lineup-service/photos` | `GET` | List active photos not yet classified or marked for retry. | `X-LL706-Lineup-Key`; optional `after_id`, `limit` (max 100) |
+| `/lineup-service/photos/{photo_id}` | `GET` | Download the active private JPEG for server-side extraction. | `X-LL706-Lineup-Key` |
+| `/lineup-service/photos/{photo_id}/extraction` | `PUT` | Store classification and extracted lineup rows in WordPress. | `X-LL706-Lineup-Key`; JSON `status`, optional `printed_date`, `printed_shift`, `raw_text`, `extraction_version`, `units` |
+| `/lineup-service/lineups` | `GET` | Return published lineups uploaded by the selected user and member-viewer photo links; no private Work Log text. | `X-LL706-Lineup-Key`; required `user_id`; optional `work_date`, `date_from`, `date_to`, `shift`, `unit`, `after_id`, `limit` |
+| `/lineup-service/index` | `GET` | Page the active published lineup corpus for Qdrant reconciliation, including duplicate uploads with the same `lineup_key`. | `X-LL706-Lineup-Key`; optional `after_id`, `limit` |
 | `/work-log-reminder` | `GET` | Return the authenticated member’s work-log reminder settings. | `Authorization: Bearer <token>` header |
 | `/work-log-reminder` | `PUT` | Save the authenticated member’s work-log reminder settings. | `Authorization: Bearer <token>` header plus optional `enabled`, `days`, `time`, and `timezone` |
 | `/work-log-weather` | `GET` | Return Barstow LMIT weather for a work date, or `weather: null` when unavailable. | `Authorization: Bearer <token>` header plus `date=YYYY-MM-DD` query parameter |
@@ -175,6 +219,11 @@ These controls write the meta key configured in the settings page so you can ren
   (replace `ll706_approved` if you changed the meta key).
 
 ## Changelog
+
+### 0.9.24
+
+- Added service-key-only endpoints and WordPress tables to prepare backed-up Work Log photos for lineup extraction and search.
+- Stored lineup rows by source Work Log date and shift, with printed-value conflict checks and duplicate fingerprints. Individual Work Log text remains outside the lineup service.
 
 ### 0.9.23
 
