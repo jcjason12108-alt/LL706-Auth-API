@@ -45,9 +45,11 @@ Photo uploads are disabled until the server administrator creates a persistent, 
 define('LL706_WORK_LOG_PHOTO_DIR', '/absolute/private/path/askbruno-work-log-photos');
 ```
 
-Do not point this at `wp-content/uploads`, the plugin directory, or any other web-accessible path. The plugin refuses a path inside WordPress or the current web document root, but the host must confirm that no other virtual host exposes the chosen directory. Include the photo directory in site backups and verify a restore. The **Work Log Photos** admin tab reports whether the directory is ready, stored photo count and bytes, and pending file deletions. It does not display photo contents. The mobile apps must be updated to use the new endpoints before any photos will upload.
+Do not point this at `wp-content/uploads`, the plugin directory, or any other web-accessible path. The plugin refuses a path inside WordPress or the current web document root, but the host must confirm that no other virtual host exposes the chosen directory. Include the photo directory in site backups and verify a restore. The **Work Log Photos** admin tab reports whether the directory is ready, stored photo count and bytes, and pending file deletions. It does not display photo contents. Only compatible AskBruno app builds upload photos; older builds remain entry-only.
 
 Only JPEG uploads are accepted, up to 5 MiB and 3000 pixels on the longest side. Each entry can have up to 20 backed-up photos, and each member can use up to 1 GiB; both limits are overrideable with the `LL706_WORK_LOG_PHOTO_MAX_PER_ENTRY` and `LL706_WORK_LOG_PHOTO_MAX_USER_BYTES` constants. The apps already save compressed 2000-pixel JPEGs. Files are named by UUID in the private directory; the database stores member/entry ownership, the original local filename, caption, size, hash, and timestamps. The plugin does not encrypt files at rest; whether the host encrypts its disks and backups must be verified separately. Work Log deletion and WordPress user deletion queue associated photo files for removal. The existing daily cleanup job retries pending deletions if the storage directory was unavailable.
+
+In compatible AskBruno builds, the single **Back Up Work Log** setting controls both written entries and saved photos. The app saves both on the device first, then syncs them privately when backup is on; draft photos stay on the device until the entry is saved. Turning backup off stops future syncing but leaves previously backed-up copies in the account. With backup on, deleting a photo or Work Log entry removes its remote copy; the app also offers a separate choice to delete device and backed-up entries and photos together. The photo API serves only the authenticated member's files and creates no public photo links. The plugin's Overview tab explains this behavior for administrators.
 
 ## REST API
 
@@ -173,6 +175,11 @@ These controls write the meta key configured in the settings page so you can ren
   (replace `ll706_approved` if you changed the meta key).
 
 ## Changelog
+
+### 0.9.22
+
+- Documented the single Work Log backup setting, private photo storage, access limits, retention, and deletion behavior in the plugin Overview tab and GitHub README.
+- Clarified the Work Log Photos admin tab for compatible app builds.
 
 ### 0.9.21
 

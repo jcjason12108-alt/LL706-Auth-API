@@ -490,6 +490,6 @@ function ll706_auth_photo_render_admin_tab() {
     <tr><th>Photo bytes</th><td><?php echo esc_html(size_format((int) ($stats['bytes'] ?? 0))); ?></td></tr>
     <tr><th>Pending deletions</th><td><?php echo esc_html(number_format_i18n($pending)); ?></td></tr>
   </tbody></table>
-  <p>Set <code>LL706_WORK_LOG_PHOTO_DIR</code> to an existing, writable directory outside the web root. Include that directory in the site's backups. Uploads remain unavailable until storage is ready. The mobile apps must be updated before they will send photos to this API.</p>
+  <p>Set <code>LL706_WORK_LOG_PHOTO_DIR</code> to an existing, writable directory outside the web root. Include that directory in the site's backups. Uploads remain unavailable until storage is ready. Compatible AskBruno app builds upload saved photos when Work Log backup is on; older builds remain entry-only.</p>
   <?php
 }
