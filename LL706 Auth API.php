@@ -3,7 +3,7 @@
  * Plugin Name: LL706 Auth API
  * Plugin URI: https://github.com/jcjason12108-alt/LL706-Auth-API/
  * Description: WordPress login + manual approval + JWT auth for LL706 mobile/web apps.
- * Version: 0.9.25
+ * Version: 0.9.26
  * Requires at least: 6.0
  * Tested up to: 7.0
  * Requires PHP: 7.4
@@ -19,9 +19,10 @@ require_once __DIR__ . '/restore-credentials.php';
 require_once __DIR__ . '/work-log-weather.php';
 require_once __DIR__ . '/work-log-photos.php';
 require_once __DIR__ . '/work-log-lineups.php';
+require_once __DIR__ . '/work-log-query.php';
 
 if (!defined('LL706_AUTH_API_VERSION')) {
-  define('LL706_AUTH_API_VERSION', '0.9.25');
+  define('LL706_AUTH_API_VERSION', '0.9.26');
 }
 
 require_once __DIR__ . '/plugin-update-checker/plugin-update-checker.php';
@@ -1366,6 +1367,10 @@ function ll706_auth_api_render_overview_tab($opts) {
       <th>Lineup Extraction</th>
       <td>The optional n8n lineup service can inspect backed-up photos and save extracted lineup rows by Work Log date and shift. It is disabled until <code>LL706_LINEUP_SERVICE_KEY</code> is configured. Published lineup records include names written on the sheet; they contain no private Work Log notes or tasks.</td>
     </tr>
+    <tr>
+      <th>Private Work Log Query Test</th>
+      <td>A separate read-only n8n route can return written Work Logs for one configured test member. It requires <code>LL706_WORK_LOG_QUERY_SERVICE_KEY</code> and <code>LL706_WORK_LOG_QUERY_TEST_USER_ID</code>. The route excludes deleted entries and photos. It must not be connected to AskBruno until the chat caller's identity is verified; a supplied user number is not authentication.</td>
+    </tr>
   </tbody>
 </table>
 
@@ -1377,6 +1382,9 @@ function ll706_auth_api_render_overview_tab($opts) {
 <h2 style="margin-top: 24px;">Lineup Service</h2>
 <p>Configure a separate 32-character-or-longer <code>LL706_LINEUP_SERVICE_KEY</code> in protected server configuration before connecting n8n. The service can list pending photos, download their private bytes, save extracted lineup rows, and search only published lineup records. A missing printed date or shift uses the source Work Log date or shift. Conflicting printed values require review before publication. Exact image and normalized-content duplicates share a lineup key; a changed lineup for the same date and shift remains a separate record.</p>
 <p>This service does not expose written Work Logs. Its <code>user_id</code> search filter selects lineups uploaded by that WordPress user; it does not verify the person asking AskBruno. Keep private Work Log questions disabled until chat authentication is added. Published lineup photo links open a WordPress login-protected viewer for approved members; app users may have to sign in on the website.</p>
+
+<h2 style="margin-top: 24px;">Private Work Log Query Test</h2>
+<p>The optional <code>/work-log-query/entries</code> route uses a different service key and is restricted to the configured test member. It returns active written Work Logs with optional date, shift, and keyword filters, but no photos. Keyword matches are substring candidates and must be checked against the returned entry. This route is for an isolated n8n test; do not attach it to member chat until the caller is authenticated and their verified WordPress user ID is enforced.</p>
 
 <h2 style="margin-top: 24px;">Quick Reference</h2>
 <table class="widefat striped" style="max-width: 1100px;">
@@ -1422,6 +1430,10 @@ function ll706_auth_api_render_overview_tab($opts) {
     <tr>
       <td><code>/lineup-service/*</code></td>
       <td>Service-key-only photo intake, extraction storage, and published lineup search for a future n8n workflow. No Work Log notes are returned.</td>
+    </tr>
+    <tr>
+      <td><code>/work-log-query/entries</code></td>
+      <td>Read-only, separately keyed Work Log queries for one configured test member. Never use the chat-supplied user number as authorization.</td>
     </tr>
     <tr>
       <td>Users screen</td>
