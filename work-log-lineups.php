@@ -66,13 +66,13 @@ function ll706_lineup_setup_tables() {
   dbDelta("CREATE TABLE {$units} (
     id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
     lineup_id bigint(20) unsigned NOT NULL,
-    row_number smallint(5) unsigned NOT NULL,
+    `row_number` smallint(5) unsigned NOT NULL,
     unit_number varchar(64) NOT NULL,
     cover_figure varchar(120) NULL,
     work_to_do text NULL,
     assigned_names text NULL,
     PRIMARY KEY  (id),
-    UNIQUE KEY lineup_row (lineup_id, row_number),
+    UNIQUE KEY lineup_row (lineup_id, `row_number`),
     KEY unit_lineup (unit_number, lineup_id)
   ) {$charset};");
 
@@ -234,7 +234,7 @@ function ll706_lineup_units_for_id($lineup_id) {
   global $wpdb;
   $table = ll706_lineup_units_table_name();
   $rows = $wpdb->get_results($wpdb->prepare(
-    "SELECT unit_number, cover_figure, work_to_do, assigned_names FROM {$table} WHERE lineup_id = %d ORDER BY row_number",
+    "SELECT unit_number, cover_figure, work_to_do, assigned_names FROM {$table} WHERE lineup_id = %d ORDER BY `row_number`",
     (int) $lineup_id
   ), ARRAY_A);
   if ($rows === null) return null;

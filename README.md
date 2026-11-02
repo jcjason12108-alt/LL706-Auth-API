@@ -220,6 +220,10 @@ These controls write the meta key configured in the settings page so you can ren
 
 ## Changelog
 
+### 0.9.25
+
+- Quoted the lineup unit `row_number` column so its table can be created on MariaDB versions where the name is reserved.
+
 ### 0.9.24
 
 - Added service-key-only endpoints and WordPress tables to prepare backed-up Work Log photos for lineup extraction and search.
