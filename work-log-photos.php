@@ -128,9 +128,9 @@ function ll706_auth_photo_owned_entry($user_id, $entry_uuid) {
   global $wpdb;
   $table = ll706_auth_work_logs_table_name();
   return (bool) $wpdb->get_var($wpdb->prepare(
-    "SELECT id FROM {$table} WHERE user_id = %d AND entry_uuid = %s AND deleted_at IS NULL LIMIT 1",
+    "SELECT id FROM {$table} WHERE user_id = %d AND LOWER(entry_uuid) = %s AND deleted_at IS NULL LIMIT 1",
     (int) $user_id,
-    $entry_uuid
+    strtolower($entry_uuid)
   ));
 }
 
