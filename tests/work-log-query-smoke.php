@@ -32,7 +32,7 @@ $wpdb = new class {
     $this->last_query = $query;
     $this->queries[] = $query;
     if (strpos($query, 'FROM wp_ll706_work_logs WHERE user_id = 5') !== false) {
-      return [['id' => 12, 'entry_uuid' => 'entry-5']];
+      return [['id' => 12, 'entry_uuid' => 'ENTRY-5']];
     }
     if (strpos($query, 'FROM wp_ll706_work_log_photos p') !== false) {
       return [['id' => 8, 'entry_uuid' => 'entry-5', 'photo_uuid' => 'photo-5']];

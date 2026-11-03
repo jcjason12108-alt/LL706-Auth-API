@@ -119,13 +119,13 @@ function ll706_work_log_query_entries(WP_REST_Request $request) {
     if ($photo_rows === null) return new WP_Error('work_log_query_failed', 'Unable to read Work Log photos.', ['status' => 500]);
     foreach ($photo_rows as $photo_row) {
       $photo = ll706_auth_photo_format_row($photo_row);
-      $photos_by_entry[(string) $photo_row['entry_uuid']][] = $photo;
+      $photos_by_entry[strtolower((string) $photo_row['entry_uuid'])][] = $photo;
     }
   }
 
   $entries = array_map(static function ($row) use ($photos_by_entry) {
     $entry = ll706_auth_format_work_log_row($row);
-    $entry['photos'] = $photos_by_entry[(string) $row['entry_uuid']] ?? [];
+    $entry['photos'] = $photos_by_entry[strtolower((string) $row['entry_uuid'])] ?? [];
     return $entry;
   }, $rows);
 

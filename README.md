@@ -234,6 +234,10 @@ These controls write the meta key configured in the settings page so you can ren
 
 ## Changelog
 
+### 0.9.29
+
+- Fixed private Work Log photo references for entries whose UUID letter case differs from the stored photo UUID reference.
+
 ### 0.9.28
 
 - Added `has_photos=1` to the private Work Log query so Bruno can find saved photos directly without paging through written-only entries.
