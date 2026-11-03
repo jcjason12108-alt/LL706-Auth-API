@@ -3,7 +3,7 @@
  * Plugin Name: LL706 Auth API
  * Plugin URI: https://github.com/jcjason12108-alt/LL706-Auth-API/
  * Description: WordPress login + manual approval + JWT auth for LL706 mobile/web apps.
- * Version: 0.9.28
+ * Version: 0.9.29
  * Requires at least: 6.0
  * Tested up to: 7.0
  * Requires PHP: 7.4
@@ -22,7 +22,7 @@ require_once __DIR__ . '/work-log-lineups.php';
 require_once __DIR__ . '/work-log-query.php';
 
 if (!defined('LL706_AUTH_API_VERSION')) {
-  define('LL706_AUTH_API_VERSION', '0.9.28');
+  define('LL706_AUTH_API_VERSION', '0.9.29');
 }
 
 require_once __DIR__ . '/plugin-update-checker/plugin-update-checker.php';
