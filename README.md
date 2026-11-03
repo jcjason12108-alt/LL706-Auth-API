@@ -19,7 +19,7 @@ WordPress plugin that powers the LL706 mobile and web apps with hardened login, 
 - Per-user work-log storage with authenticated create, read, update, and soft-delete endpoints.
 - Private Work Log photo backup endpoints with per-member access and a separate file-storage directory.
 - Optional service-key-only lineup intake and WordPress storage for extracted rows from backed-up photos.
-- Optional read-only Work Log and photo-reference query route for n8n, keyed by a requested WordPress user ID and protected by a separate service key.
+- Optional read-only Work Log and photo-reference query route for n8n, keyed by a requested WordPress user ID and protected by a separate service key. Use `has_photos=1` to find entries with active saved photos directly.
 - Per-user work-log reminder preferences with authenticated read/update endpoints for app-local scheduling.
 - Shared Barstow LMIT weather by work date, cached in WordPress and refreshed from Open-Meteo without member GPS or work-log data leaving the server.
 - Public Android Digital Asset Links document at `/.well-known/assetlinks.json` so supported password managers can share saved website credentials with the Play-signed AskBruno app.
@@ -97,7 +97,7 @@ The separate `/work-log-query/entries` endpoint gives n8n read-only access to a 
 define('LL706_WORK_LOG_QUERY_SERVICE_KEY', 'replace-with-a-different-long-random-secret');
 ```
 
-Requests use `X-LL706-Work-Log-Query-Key` over HTTPS and require a positive WordPress `user_id`. The key authenticates n8n to WordPress. The route returns only active entries and their active photo references for the requested user; photo bytes are never in the JSON response. Optional `work_date`, `date_from`, `date_to`, `shift`, and `keyword` filters narrow the results; `before_id` and `limit` paginate them. Keyword filtering is a substring search of Work Log text, so an agent must verify the exact unit or name in returned entries before answering. Mobile apps fetch selected photo bytes through the existing owner-only bearer-token photo endpoint.
+Requests use `X-LL706-Work-Log-Query-Key` over HTTPS and require a positive WordPress `user_id`. The key authenticates n8n to WordPress. The route returns only active entries and their active photo references for the requested user; photo bytes are never in the JSON response. Optional `work_date`, `date_from`, `date_to`, `shift`, and `keyword` filters narrow the results. Set `has_photos=1` to return only entries with active saved photos; this lets the agent find a photo without paging through entries that have none. `before_id` and `limit` paginate the results. Keyword filtering is a substring search of Work Log text, so an agent must verify the exact unit or name in returned entries before answering. Mobile apps fetch selected photo bytes through the existing owner-only bearer-token photo endpoint.
 
 The current AskBruno chat workflow uses the app-supplied `metadata.unionUser.userId` as the requested ID. That value identifies which records to read but is not independently authenticated by this service. It does not create a vector copy; WordPress remains the source of truth.
 
@@ -132,7 +132,7 @@ All routes live under the namespace `ll706/v1`.
 | `/lineup-service/photos/{photo_id}/extraction` | `PUT` | Store classification and extracted lineup rows in WordPress. | `X-LL706-Lineup-Key`; JSON `status`, optional `printed_date`, `printed_shift`, `raw_text`, `extraction_version`, `units` |
 | `/lineup-service/lineups` | `GET` | Return published lineups uploaded by the selected user and member-viewer photo links; no private Work Log text. | `X-LL706-Lineup-Key`; required `user_id`; optional `work_date`, `date_from`, `date_to`, `shift`, `unit`, `after_id`, `limit` |
 | `/lineup-service/index` | `GET` | Page the active published lineup corpus for Qdrant reconciliation, including duplicate uploads with the same `lineup_key`. | `X-LL706-Lineup-Key`; optional `after_id`, `limit` |
-| `/work-log-query/entries` | `GET` | Read active written Work Logs and photo references for a requested WordPress user ID; no photo bytes. | `X-LL706-Work-Log-Query-Key`; required `user_id`; optional `work_date`, `date_from`, `date_to`, `shift`, `keyword`, `before_id`, `limit` (max 100) |
+| `/work-log-query/entries` | `GET` | Read active written Work Logs and photo references for a requested WordPress user ID; no photo bytes. | `X-LL706-Work-Log-Query-Key`; required `user_id`; optional `work_date`, `date_from`, `date_to`, `shift`, `keyword`, `has_photos`, `before_id`, `limit` (max 100) |
 | `/work-log-reminder` | `GET` | Return the authenticated member’s work-log reminder settings. | `Authorization: Bearer <token>` header |
 | `/work-log-reminder` | `PUT` | Save the authenticated member’s work-log reminder settings. | `Authorization: Bearer <token>` header plus optional `enabled`, `days`, `time`, and `timezone` |
 | `/work-log-weather` | `GET` | Return Barstow LMIT weather for a work date, or `weather: null` when unavailable. | `Authorization: Bearer <token>` header plus `date=YYYY-MM-DD` query parameter |
@@ -233,6 +233,10 @@ These controls write the meta key configured in the settings page so you can ren
   (replace `ll706_approved` if you changed the meta key).
 
 ## Changelog
+
+### 0.9.28
+
+- Added `has_photos=1` to the private Work Log query so Bruno can find saved photos directly without paging through written-only entries.
 
 ### 0.9.27
 

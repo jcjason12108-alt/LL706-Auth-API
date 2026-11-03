@@ -71,4 +71,12 @@ foreach ([4, 5] as $user_id) {
 }
 check(ll706_work_log_query_valid_date('2028-02-29'), 'Valid leap date was rejected');
 check(!ll706_work_log_query_valid_date('2027-02-29'), 'Invalid leap date was accepted');
+check(ll706_work_log_query_entries(new WP_REST_Request([], ['user_id' => 5, 'has_photos' => 'maybe']))->code === 'work_log_query_invalid_photo_filter', 'Invalid photo filter was accepted');
+$with_photos = ll706_work_log_query_entries(new WP_REST_Request([], ['user_id' => 5, 'has_photos' => '1']));
+check($with_photos instanceof WP_REST_Response, 'Photo-only query was rejected');
+check((bool) array_filter($wpdb->queries, static function ($query) {
+  return strpos($query, 'EXISTS (SELECT 1 FROM wp_ll706_work_log_photos p') !== false
+    && strpos($query, 'p.user_id = wp_ll706_work_logs.user_id') !== false
+    && strpos($query, 'p.deleted_at IS NULL') !== false;
+}), 'Photo-only query did not require an active photo owned by the entry');
 echo "work-log query smoke checks passed\n";
