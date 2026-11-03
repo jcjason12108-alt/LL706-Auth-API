@@ -76,6 +76,18 @@ function ll706_work_log_query_entries(WP_REST_Request $request) {
     );
   }
 
+  $has_photos = $request->get_param('has_photos');
+  if ($has_photos !== null && $has_photos !== '') {
+    $has_photos = filter_var($has_photos, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+    if ($has_photos === null) {
+      return new WP_Error('work_log_query_invalid_photo_filter', 'Invalid has_photos.', ['status' => 400]);
+    }
+    if ($has_photos) {
+      $photos_table = ll706_auth_photo_table_name();
+      $where .= " AND EXISTS (SELECT 1 FROM {$photos_table} p WHERE p.user_id = {$table}.user_id AND p.entry_uuid = {$table}.entry_uuid AND p.deleted_at IS NULL)";
+    }
+  }
+
   $before = $request->get_param('before_id');
   if ($before !== null && $before !== '') {
     $before = filter_var($before, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);

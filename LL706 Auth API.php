@@ -3,7 +3,7 @@
  * Plugin Name: LL706 Auth API
  * Plugin URI: https://github.com/jcjason12108-alt/LL706-Auth-API/
  * Description: WordPress login + manual approval + JWT auth for LL706 mobile/web apps.
- * Version: 0.9.27
+ * Version: 0.9.28
  * Requires at least: 6.0
  * Tested up to: 7.0
  * Requires PHP: 7.4
@@ -22,7 +22,7 @@ require_once __DIR__ . '/work-log-lineups.php';
 require_once __DIR__ . '/work-log-query.php';
 
 if (!defined('LL706_AUTH_API_VERSION')) {
-  define('LL706_AUTH_API_VERSION', '0.9.27');
+  define('LL706_AUTH_API_VERSION', '0.9.28');
 }
 
 require_once __DIR__ . '/plugin-update-checker/plugin-update-checker.php';
@@ -1384,7 +1384,7 @@ function ll706_auth_api_render_overview_tab($opts) {
 <p>This service does not expose written Work Logs. Its <code>user_id</code> search filter selects lineups uploaded by that WordPress user; it does not verify the person asking AskBruno. Published lineup photo links open a WordPress login-protected viewer for approved members; app users may have to sign in on the website.</p>
 
 <h2 style="margin-top: 24px;">Private Work Log Query</h2>
-<p>The optional <code>/work-log-query/entries</code> route uses a separate service key and a required WordPress <code>user_id</code>. It returns that user's active written Work Logs and active photo metadata with optional date, shift, and keyword filters. It never returns photo bytes. Keyword matches are substring candidates and must be checked against the returned entry. The service key authenticates n8n, while the supplied user ID selects records without independently verifying the chat caller. The mobile app retrieves any photo bytes through its existing owner-only bearer-token endpoint.</p>
+<p>The optional <code>/work-log-query/entries</code> route uses a separate service key and a required WordPress <code>user_id</code>. It returns that user's active written Work Logs and active photo metadata with optional date, shift, keyword, and <code>has_photos=1</code> filters. The photo filter finds entries with active saved photos without paging through written-only entries. The route never returns photo bytes. Keyword matches are substring candidates and must be checked against the returned entry. The service key authenticates n8n, while the supplied user ID selects records without independently verifying the chat caller. The mobile app retrieves any photo bytes through its existing owner-only bearer-token endpoint.</p>
 
 <h2 style="margin-top: 24px;">Quick Reference</h2>
 <table class="widefat striped" style="max-width: 1100px;">
