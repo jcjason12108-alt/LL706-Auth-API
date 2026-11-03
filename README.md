@@ -234,6 +234,10 @@ These controls write the meta key configured in the settings page so you can ren
 
 ## Changelog
 
+### 0.9.30
+
+- Fixed private photo downloads for Work Log entries whose saved UUID contains uppercase letters.
+
 ### 0.9.29
 
 - Fixed private Work Log photo references for entries whose UUID letter case differs from the stored photo UUID reference.
