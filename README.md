@@ -19,7 +19,7 @@ WordPress plugin that powers the LL706 mobile and web apps with hardened login, 
 - Per-user work-log storage with authenticated create, read, update, and soft-delete endpoints.
 - Private Work Log photo backup endpoints with per-member access and a separate file-storage directory.
 - Optional service-key-only lineup intake and WordPress storage for extracted rows from backed-up photos.
-- Optional read-only, single-member Work Log query route for an isolated n8n test; member chat access still requires verified caller identity.
+- Optional read-only Work Log and photo-reference query route for n8n, keyed by a requested WordPress user ID and protected by a separate service key.
 - Per-user work-log reminder preferences with authenticated read/update endpoints for app-local scheduling.
 - Shared Barstow LMIT weather by work date, cached in WordPress and refreshed from Open-Meteo without member GPS or work-log data leaving the server.
 - Public Android Digital Asset Links document at `/.well-known/assetlinks.json` so supported password managers can share saved website credentials with the Play-signed AskBruno app.
@@ -89,20 +89,19 @@ Duplicate handling checks identical photo bytes for the same date and shift, the
 
 Photos remain in private file storage. A published lineup result includes a `photo_url` that opens a WordPress login-protected viewer for approved members. The app may need the member to sign in on the website before the image opens. Unpublished Work Log photos are never available through this viewer.
 
-### Private Work Log query test
+### Private Work Log query
 
-The separate `/work-log-query/entries` endpoint can give an isolated n8n test workflow access to one member's backed-up written Work Logs. Configure a different secret and an explicit test WordPress user ID in protected server configuration:
+The separate `/work-log-query/entries` endpoint gives n8n read-only access to a requested member's backed-up written Work Logs and active photo metadata. Configure a different secret in protected server configuration:
 
 ```php
 define('LL706_WORK_LOG_QUERY_SERVICE_KEY', 'replace-with-a-different-long-random-secret');
-define('LL706_WORK_LOG_QUERY_TEST_USER_ID', 4);
 ```
 
-Requests use `X-LL706-Work-Log-Query-Key` over HTTPS. The key authenticates n8n to WordPress. The route rejects all other user IDs, returns only active entries for the configured user, and never returns photos. Optional `work_date`, `date_from`, `date_to`, `shift`, and `keyword` filters narrow the results; `before_id` and `limit` paginate them. Keyword filtering is a substring search of Work Log text, so an agent must verify the exact unit or name in returned entries before answering.
+Requests use `X-LL706-Work-Log-Query-Key` over HTTPS and require a positive WordPress `user_id`. The key authenticates n8n to WordPress. The route returns only active entries and their active photo references for the requested user; photo bytes are never in the JSON response. Optional `work_date`, `date_from`, `date_to`, `shift`, and `keyword` filters narrow the results; `before_id` and `limit` paginate them. Keyword filtering is a substring search of Work Log text, so an agent must verify the exact unit or name in returned entries before answering. Mobile apps fetch selected photo bytes through the existing owner-only bearer-token photo endpoint.
 
-This test route must remain disconnected from AskBruno until the chat caller is authenticated and the verified WordPress user ID, rather than a user number in a chat message, controls access to private Work Logs. It does not create a vector copy; WordPress remains the source of truth.
+The current AskBruno chat workflow uses the app-supplied `metadata.unionUser.userId` as the requested ID. That value identifies which records to read but is not independently authenticated by this service. It does not create a vector copy; WordPress remains the source of truth.
 
-For local helper checks, run `php tests/lineup-smoke.php`. A WordPress staging site is still needed to verify table creation, service routes, photo viewing, and deletion before deployment.
+For local Work Log query checks, run `php tests/work-log-query-smoke.php`. A WordPress staging site is still needed to verify service routes and photo viewing before deployment.
 
 ## REST API
 
@@ -133,7 +132,7 @@ All routes live under the namespace `ll706/v1`.
 | `/lineup-service/photos/{photo_id}/extraction` | `PUT` | Store classification and extracted lineup rows in WordPress. | `X-LL706-Lineup-Key`; JSON `status`, optional `printed_date`, `printed_shift`, `raw_text`, `extraction_version`, `units` |
 | `/lineup-service/lineups` | `GET` | Return published lineups uploaded by the selected user and member-viewer photo links; no private Work Log text. | `X-LL706-Lineup-Key`; required `user_id`; optional `work_date`, `date_from`, `date_to`, `shift`, `unit`, `after_id`, `limit` |
 | `/lineup-service/index` | `GET` | Page the active published lineup corpus for Qdrant reconciliation, including duplicate uploads with the same `lineup_key`. | `X-LL706-Lineup-Key`; optional `after_id`, `limit` |
-| `/work-log-query/entries` | `GET` | Read active written Work Logs for one configured test member; no photos. Keep disconnected from member chat until caller identity is verified. | `X-LL706-Work-Log-Query-Key`; required `user_id`; optional `work_date`, `date_from`, `date_to`, `shift`, `keyword`, `before_id`, `limit` (max 100) |
+| `/work-log-query/entries` | `GET` | Read active written Work Logs and photo references for a requested WordPress user ID; no photo bytes. | `X-LL706-Work-Log-Query-Key`; required `user_id`; optional `work_date`, `date_from`, `date_to`, `shift`, `keyword`, `before_id`, `limit` (max 100) |
 | `/work-log-reminder` | `GET` | Return the authenticated member’s work-log reminder settings. | `Authorization: Bearer <token>` header |
 | `/work-log-reminder` | `PUT` | Save the authenticated member’s work-log reminder settings. | `Authorization: Bearer <token>` header plus optional `enabled`, `days`, `time`, and `timezone` |
 | `/work-log-weather` | `GET` | Return Barstow LMIT weather for a work date, or `weather: null` when unavailable. | `Authorization: Bearer <token>` header plus `date=YYYY-MM-DD` query parameter |
@@ -234,6 +233,10 @@ These controls write the meta key configured in the settings page so you can ren
   (replace `ll706_approved` if you changed the meta key).
 
 ## Changelog
+
+### 0.9.27
+
+- Expanded the separately keyed, read-only Work Log query route to accept any valid WordPress user ID and include active photo references with each returned entry. The route excludes deleted entries and photo bytes; the supplied user ID selects records without authenticating the chat caller.
 
 ### 0.9.26
 
