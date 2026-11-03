@@ -1,7 +1,7 @@
 <?php
 /**
- * Read-only, single-member Work Log query service for an isolated n8n test.
- * A chat-supplied user number is never treated as proof of member identity.
+ * Read-only Work Log query service for the n8n chat workflow.
+ * The service key authorizes n8n; the requested user_id selects the member's entries.
  */
 
 if (!defined('ABSPATH')) exit;
@@ -18,9 +18,8 @@ function ll706_work_log_query_register_route() {
 
 function ll706_work_log_query_require_key(WP_REST_Request $request) {
   $key = defined('LL706_WORK_LOG_QUERY_SERVICE_KEY') ? (string) LL706_WORK_LOG_QUERY_SERVICE_KEY : '';
-  $test_user = defined('LL706_WORK_LOG_QUERY_TEST_USER_ID') ? (int) LL706_WORK_LOG_QUERY_TEST_USER_ID : 0;
-  if (strlen($key) < 32 || $test_user < 1) {
-    return new WP_Error('work_log_query_unavailable', 'Work Log query test is not configured.', ['status' => 503]);
+  if (strlen($key) < 32) {
+    return new WP_Error('work_log_query_unavailable', 'Work Log query service is not configured.', ['status' => 503]);
   }
   $provided = (string) $request->get_header('x-ll706-work-log-query-key');
   if ($provided === '' || !hash_equals($key, $provided)) {
@@ -42,10 +41,6 @@ function ll706_work_log_query_entries(WP_REST_Request $request) {
   if ($user_id === false || $user_id === null) {
     return new WP_Error('work_log_query_invalid_user', 'A valid user_id is required.', ['status' => 400]);
   }
-  if ((int) $user_id !== (int) LL706_WORK_LOG_QUERY_TEST_USER_ID) {
-    return new WP_Error('work_log_query_forbidden', 'This test is limited to one member.', ['status' => 403]);
-  }
-
   $table = ll706_auth_work_logs_table_name();
   $where = $wpdb->prepare('user_id = %d AND deleted_at IS NULL', (int) $user_id);
   foreach (['work_date' => '=', 'date_from' => '>=', 'date_to' => '<='] as $name => $operator) {
@@ -100,10 +95,32 @@ function ll706_work_log_query_entries(WP_REST_Request $request) {
   $rows = array_slice($rows, 0, $limit);
   $next = $rows ? (int) $rows[count($rows) - 1]['id'] : null;
 
+  $photos_by_entry = [];
+  if ($rows) {
+    $entry_uuids = array_values(array_unique(array_column($rows, 'entry_uuid')));
+    $placeholders = implode(', ', array_fill(0, count($entry_uuids), '%s'));
+    $photos_table = ll706_auth_photo_table_name();
+    $photo_rows = $wpdb->get_results($wpdb->prepare(
+      "SELECT p.* FROM {$photos_table} p INNER JOIN {$table} w ON w.user_id = p.user_id AND w.entry_uuid = p.entry_uuid WHERE p.user_id = %d AND p.entry_uuid IN ({$placeholders}) AND p.deleted_at IS NULL AND w.deleted_at IS NULL ORDER BY p.created_at, p.id",
+      array_merge([(int) $user_id], $entry_uuids)
+    ), ARRAY_A);
+    if ($photo_rows === null) return new WP_Error('work_log_query_failed', 'Unable to read Work Log photos.', ['status' => 500]);
+    foreach ($photo_rows as $photo_row) {
+      $photo = ll706_auth_photo_format_row($photo_row);
+      $photos_by_entry[(string) $photo_row['entry_uuid']][] = $photo;
+    }
+  }
+
+  $entries = array_map(static function ($row) use ($photos_by_entry) {
+    $entry = ll706_auth_format_work_log_row($row);
+    $entry['photos'] = $photos_by_entry[(string) $row['entry_uuid']] ?? [];
+    return $entry;
+  }, $rows);
+
   $response = new WP_REST_Response([
     'ok' => true,
     'user_id' => (int) $user_id,
-    'entries' => array_map('ll706_auth_format_work_log_row', $rows),
+    'entries' => $entries,
     'next_before_id' => $more ? $next : null,
     'more_records_possible' => $more,
     'keyword_is_substring_match' => $keyword !== '',
