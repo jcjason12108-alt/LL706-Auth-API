@@ -254,6 +254,23 @@ function ll706_auth_weather_get_row($date) {
   ), ARRAY_A);
 }
 
+function ll706_auth_weather_format_row($row) {
+  if (!is_array($row)) return null;
+  return [
+    'date' => $row['weather_date'],
+    'location' => 'Barstow LMIT',
+    'high_f' => (float) $row['high_f'],
+    'low_f' => (float) $row['low_f'],
+    'humidity_mean_pct' => (int) $row['humidity_mean_pct'],
+    'wind_max_mph' => (float) $row['wind_max_mph'],
+    'status' => $row['data_kind'],
+    'source' => 'Open-Meteo',
+    'source_url' => 'https://open-meteo.com/',
+    'license_url' => 'https://open-meteo.com/en/licence',
+    'fetched_at_utc' => $row['fetched_at'],
+  ];
+}
+
 function ll706_auth_weather_refresh_day_if_needed($date) {
   $row = ll706_auth_weather_get_row($date);
   $today = ll706_auth_weather_today();
@@ -348,21 +365,6 @@ function ll706_auth_weather_rest_get(WP_REST_Request $req) {
   }
 
   $row = ll706_auth_weather_refresh_day_if_needed($date);
-  $weather = null;
-  if (is_array($row)) {
-    $weather = [
-      'date' => $row['weather_date'],
-      'location' => 'Barstow LMIT',
-      'high_f' => (float) $row['high_f'],
-      'low_f' => (float) $row['low_f'],
-      'humidity_mean_pct' => (int) $row['humidity_mean_pct'],
-      'wind_max_mph' => (float) $row['wind_max_mph'],
-      'status' => $row['data_kind'],
-      'source' => 'Open-Meteo',
-      'source_url' => 'https://open-meteo.com/',
-      'license_url' => 'https://open-meteo.com/en/licence',
-      'fetched_at_utc' => $row['fetched_at'],
-    ];
-  }
+  $weather = ll706_auth_weather_format_row($row);
   return new WP_REST_Response(['ok' => true, 'weather' => $weather], 200);
 }

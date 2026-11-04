@@ -32,7 +32,11 @@ $wpdb = new class {
     $this->last_query = $query;
     $this->queries[] = $query;
     if (strpos($query, 'FROM wp_ll706_work_logs WHERE user_id = 5') !== false) {
-      return [['id' => 12, 'entry_uuid' => 'ENTRY-5']];
+      return [['id' => 12, 'entry_uuid' => 'ENTRY-5', 'work_date' => '2026-10-31']];
+    }
+    if (strpos($query, 'FROM wp_ll706_weather_days WHERE site_key = barstow-lmit') !== false) {
+      if (!empty($GLOBALS['weather_missing'])) return [];
+      return [['weather_date' => '2026-10-31', 'high_f' => '72.4', 'low_f' => '49.1', 'humidity_mean_pct' => '28', 'wind_max_mph' => '16.2', 'data_kind' => 'historical', 'fetched_at' => '2026-11-01 12:00:00']];
     }
     if (strpos($query, 'FROM wp_ll706_work_log_photos p') !== false) {
       return [['id' => 8, 'entry_uuid' => 'entry-5', 'photo_uuid' => 'photo-5']];
@@ -43,9 +47,14 @@ $wpdb = new class {
 define('ARRAY_A', 'ARRAY_A');
 function ll706_auth_work_logs_table_name() { return 'wp_ll706_work_logs'; }
 function ll706_auth_photo_table_name() { return 'wp_ll706_work_log_photos'; }
+function ll706_auth_weather_table_name() { return 'wp_ll706_weather_days'; }
+function ll706_auth_weather_valid_date($date) { return ll706_work_log_query_valid_date($date); }
+function ll706_auth_weather_refresh_day_if_needed($date) { $GLOBALS['weather_refreshed_date'] = $date; }
+function ll706_auth_weather_format_row($row) { return ['date' => $row['weather_date'], 'high_f' => (float) $row['high_f'], 'status' => $row['data_kind']]; }
 function ll706_auth_format_work_log_row($row) { return $row; }
 function ll706_auth_photo_format_row($row) { return ['photo_uuid' => $row['photo_uuid']]; }
 require dirname(__DIR__) . '/work-log-query.php';
+define('LL706_AUTH_WEATHER_SITE', 'barstow-lmit');
 function check($condition, $message) {
   if (!$condition) throw new RuntimeException($message);
 }
@@ -67,8 +76,20 @@ foreach ([4, 5] as $user_id) {
   if ($user_id === 5) {
     check($result->data['entries'][0]['photos'][0]['photo_uuid'] === 'photo-5', 'Photo metadata was not attached to its entry');
     check(strpos($wpdb->last_query, 'p.user_id = 5') !== false, 'Photo lookup did not isolate the requested user');
+    check($GLOBALS['weather_refreshed_date'] === '2026-10-31', 'Single-date weather was not refreshed');
+    check($result->data['entries'][0]['weather']['high_f'] === 72.4, 'Stored weather was not attached to the matching date');
+    check((bool) array_filter($wpdb->queries, static function ($query) {
+      return strpos($query, 'FROM wp_ll706_weather_days WHERE site_key = barstow-lmit') !== false
+        && strpos($query, 'weather_date IN (2026-10-31)') !== false;
+    }), 'Weather lookup did not filter by site and entry date');
+  } else {
+    check(count($result->data['entries']) === 0, 'Another user received someone else\'s Work Logs');
   }
 }
+$GLOBALS['weather_missing'] = true;
+$without_weather = ll706_work_log_query_entries(new WP_REST_Request([], ['user_id' => 5]));
+check($without_weather instanceof WP_REST_Response && $without_weather->data['entries'][0]['weather'] === null, 'Missing weather was not returned as null');
+$GLOBALS['weather_missing'] = false;
 check(ll706_work_log_query_valid_date('2028-02-29'), 'Valid leap date was rejected');
 check(!ll706_work_log_query_valid_date('2027-02-29'), 'Invalid leap date was accepted');
 check(ll706_work_log_query_entries(new WP_REST_Request([], ['user_id' => 5, 'has_photos' => 'maybe']))->code === 'work_log_query_invalid_photo_filter', 'Invalid photo filter was accepted');

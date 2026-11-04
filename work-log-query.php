@@ -108,7 +108,24 @@ function ll706_work_log_query_entries(WP_REST_Request $request) {
   $next = $rows ? (int) $rows[count($rows) - 1]['id'] : null;
 
   $photos_by_entry = [];
+  $weather_by_date = [];
   if ($rows) {
+    $dates = array_values(array_unique(array_filter(array_column($rows, 'work_date'), 'll706_auth_weather_valid_date')));
+    if (count($dates) === 1) {
+      ll706_auth_weather_refresh_day_if_needed($dates[0]);
+    }
+    if ($dates) {
+      $weather_table = ll706_auth_weather_table_name();
+      $weather_placeholders = implode(', ', array_fill(0, count($dates), '%s'));
+      $weather_rows = $wpdb->get_results($wpdb->prepare(
+        "SELECT weather_date, high_f, low_f, humidity_mean_pct, wind_max_mph, data_kind, fetched_at FROM {$weather_table} WHERE site_key = %s AND weather_date IN ({$weather_placeholders})",
+        array_merge([LL706_AUTH_WEATHER_SITE], $dates)
+      ), ARRAY_A);
+      if ($weather_rows === null) return new WP_Error('work_log_query_failed', 'Unable to read Work Log weather.', ['status' => 500]);
+      foreach ($weather_rows as $weather_row) {
+        $weather_by_date[$weather_row['weather_date']] = ll706_auth_weather_format_row($weather_row);
+      }
+    }
     $entry_uuids = array_values(array_unique(array_column($rows, 'entry_uuid')));
     $placeholders = implode(', ', array_fill(0, count($entry_uuids), '%s'));
     $photos_table = ll706_auth_photo_table_name();
@@ -123,9 +140,10 @@ function ll706_work_log_query_entries(WP_REST_Request $request) {
     }
   }
 
-  $entries = array_map(static function ($row) use ($photos_by_entry) {
+  $entries = array_map(static function ($row) use ($photos_by_entry, $weather_by_date) {
     $entry = ll706_auth_format_work_log_row($row);
     $entry['photos'] = $photos_by_entry[strtolower((string) $row['entry_uuid'])] ?? [];
+    $entry['weather'] = $weather_by_date[$row['work_date']] ?? null;
     return $entry;
   }, $rows);
 
