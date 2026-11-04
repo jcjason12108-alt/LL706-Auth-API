@@ -118,7 +118,7 @@ function ll706_work_log_query_entries(WP_REST_Request $request) {
       $weather_table = ll706_auth_weather_table_name();
       $weather_placeholders = implode(', ', array_fill(0, count($dates), '%s'));
       $weather_rows = $wpdb->get_results($wpdb->prepare(
-        "SELECT weather_date, high_f, low_f, humidity_mean_pct, wind_max_mph, data_kind, fetched_at FROM {$weather_table} WHERE site_key = %s AND weather_date IN ({$weather_placeholders})",
+        "SELECT weather_date, high_f, low_f, humidity_mean_pct, wind_max_mph, rain_in, data_kind, fetched_at FROM {$weather_table} WHERE site_key = %s AND weather_date IN ({$weather_placeholders})",
         array_merge([LL706_AUTH_WEATHER_SITE], $dates)
       ), ARRAY_A);
       if ($weather_rows === null) return new WP_Error('work_log_query_failed', 'Unable to read Work Log weather.', ['status' => 500]);
