@@ -97,7 +97,7 @@ The separate `/work-log-query/entries` endpoint gives n8n read-only access to a 
 define('LL706_WORK_LOG_QUERY_SERVICE_KEY', 'replace-with-a-different-long-random-secret');
 ```
 
-Requests use `X-LL706-Work-Log-Query-Key` over HTTPS and require a positive WordPress `user_id`. The key authenticates n8n to WordPress. The route returns only active entries and their active photo references for the requested user; photo bytes are never in the JSON response. Optional `work_date`, `date_from`, `date_to`, `shift`, and `keyword` filters narrow the results. Set `has_photos=1` to return only entries with active saved photos; this lets the agent find a photo without paging through entries that have none. `before_id` and `limit` paginate the results. Keyword filtering is a substring search of Work Log text, so an agent must verify the exact unit or name in returned entries before answering. Mobile apps fetch selected photo bytes through the existing owner-only bearer-token photo endpoint.
+Requests use `X-LL706-Work-Log-Query-Key` over HTTPS and require a positive WordPress `user_id`. The key authenticates n8n to WordPress. The route returns only active entries and their active photo references for the requested user; photo bytes are never in the JSON response. Each entry also includes shared Barstow LMIT weather for its work date, or `weather: null` when no weather is available. Weather remains in its separate date-based table, and a single-date query can refresh that day's weather on demand. Optional `work_date`, `date_from`, `date_to`, `shift`, and `keyword` filters narrow the results. Set `has_photos=1` to return only entries with active saved photos; this lets the agent find a photo without paging through entries that have none. `before_id` and `limit` paginate the results. Keyword filtering is a substring search of Work Log text, so an agent must verify the exact unit or name in returned entries before answering. Mobile apps fetch selected photo bytes through the existing owner-only bearer-token photo endpoint.
 
 The current AskBruno chat workflow uses the app-supplied `metadata.unionUser.userId` as the requested ID. That value identifies which records to read but is not independently authenticated by this service. It does not create a vector copy; WordPress remains the source of truth.
 
@@ -132,7 +132,7 @@ All routes live under the namespace `ll706/v1`.
 | `/lineup-service/photos/{photo_id}/extraction` | `PUT` | Store classification and extracted lineup rows in WordPress. | `X-LL706-Lineup-Key`; JSON `status`, optional `printed_date`, `printed_shift`, `raw_text`, `extraction_version`, `units` |
 | `/lineup-service/lineups` | `GET` | Return published lineups uploaded by the selected user and member-viewer photo links; no private Work Log text. | `X-LL706-Lineup-Key`; required `user_id`; optional `work_date`, `date_from`, `date_to`, `shift`, `unit`, `after_id`, `limit` |
 | `/lineup-service/index` | `GET` | Page the active published lineup corpus for Qdrant reconciliation, including duplicate uploads with the same `lineup_key`. | `X-LL706-Lineup-Key`; optional `after_id`, `limit` |
-| `/work-log-query/entries` | `GET` | Read active written Work Logs and photo references for a requested WordPress user ID; no photo bytes. | `X-LL706-Work-Log-Query-Key`; required `user_id`; optional `work_date`, `date_from`, `date_to`, `shift`, `keyword`, `has_photos`, `before_id`, `limit` (max 100) |
+| `/work-log-query/entries` | `GET` | Read active written Work Logs, photo references, and date-based weather for a requested WordPress user ID; no photo bytes. | `X-LL706-Work-Log-Query-Key`; required `user_id`; optional `work_date`, `date_from`, `date_to`, `shift`, `keyword`, `has_photos`, `before_id`, `limit` (max 100) |
 | `/work-log-reminder` | `GET` | Return the authenticated member’s work-log reminder settings. | `Authorization: Bearer <token>` header |
 | `/work-log-reminder` | `PUT` | Save the authenticated member’s work-log reminder settings. | `Authorization: Bearer <token>` header plus optional `enabled`, `days`, `time`, and `timezone` |
 | `/work-log-weather` | `GET` | Return Barstow LMIT weather for a work date, or `weather: null` when unavailable. | `Authorization: Bearer <token>` header plus `date=YYYY-MM-DD` query parameter |
@@ -233,6 +233,10 @@ These controls write the meta key configured in the settings page so you can ren
   (replace `ll706_approved` if you changed the meta key).
 
 ## Changelog
+
+### 0.9.31
+
+- Included shared Barstow LMIT weather with each private Work Log query result so Bruno can answer weather questions from the stored work dates; missing weather is returned as `null`.
 
 ### 0.9.30
 
