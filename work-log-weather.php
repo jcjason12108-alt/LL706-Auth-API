@@ -7,7 +7,7 @@
 if (!defined('ABSPATH')) exit;
 
 if (!defined('LL706_AUTH_WEATHER_DB_VERSION')) {
-  define('LL706_AUTH_WEATHER_DB_VERSION', '1.0.0');
+  define('LL706_AUTH_WEATHER_DB_VERSION', '1.1.0');
 }
 
 if (!defined('LL706_AUTH_WEATHER_SITE')) {
@@ -61,6 +61,7 @@ function ll706_auth_weather_setup_table() {
     low_f decimal(5,1) NOT NULL,
     humidity_mean_pct tinyint(3) unsigned NOT NULL,
     wind_max_mph decimal(5,1) NOT NULL,
+    rain_in decimal(7,3) DEFAULT NULL,
     data_kind varchar(16) NOT NULL,
     model varchar(32) NOT NULL,
     fetched_at datetime NOT NULL,
@@ -73,9 +74,14 @@ function ll706_auth_weather_setup_table() {
   if ($exists !== $table) {
     return false;
   }
+  $rain_column = $wpdb->get_var($wpdb->prepare("SHOW COLUMNS FROM {$table} LIKE %s", 'rain_in'));
+  if ($rain_column !== 'rain_in') {
+    return false;
+  }
 
   update_option('ll706_auth_weather_db_version', LL706_AUTH_WEATHER_DB_VERSION, false);
   ll706_auth_weather_schedule_backfill();
+  ll706_auth_weather_schedule_rain_backfill();
   return true;
 }
 
@@ -107,6 +113,7 @@ function ll706_auth_weather_ensure_daily_schedule() {
 function ll706_auth_weather_deactivate() {
   wp_clear_scheduled_hook('ll706_auth_weather_daily');
   wp_clear_scheduled_hook('ll706_auth_weather_backfill');
+  wp_clear_scheduled_hook('ll706_auth_weather_rain_backfill');
 }
 
 function ll706_auth_weather_schedule_backfill() {
@@ -129,15 +136,59 @@ function ll706_auth_weather_schedule_backfill() {
   }
 }
 
+function ll706_auth_weather_oldest_day_without_rain() {
+  global $wpdb;
+  $table = ll706_auth_weather_table_name();
+  return $wpdb->get_var($wpdb->prepare(
+    "SELECT MIN(weather_date) FROM {$table} WHERE site_key = %s AND weather_date <= %s AND rain_in IS NULL",
+    LL706_AUTH_WEATHER_SITE,
+    ll706_auth_weather_yesterday()
+  ));
+}
+
+function ll706_auth_weather_schedule_rain_backfill() {
+  if (!ll706_auth_weather_valid_date(ll706_auth_weather_oldest_day_without_rain())) {
+    return;
+  }
+  if (!wp_next_scheduled('ll706_auth_weather_rain_backfill')) {
+    wp_schedule_single_event(time() + MINUTE_IN_SECONDS, 'll706_auth_weather_rain_backfill');
+  }
+}
+
+function ll706_auth_weather_run_rain_backfill() {
+  $start = ll706_auth_weather_oldest_day_without_rain();
+  if (!ll706_auth_weather_valid_date($start)) {
+    return;
+  }
+  $end = (new DateTimeImmutable($start))->modify('+29 days')->format('Y-m-d');
+  if ($end > ll706_auth_weather_yesterday()) {
+    $end = ll706_auth_weather_yesterday();
+  }
+  $rows = ll706_auth_weather_fetch_range($start, $end, 'historical');
+  if (!is_wp_error($rows)) {
+    $expected = (new DateTimeImmutable($start))->diff(new DateTimeImmutable($end))->days + 1;
+    if (count($rows) !== $expected) {
+      $rows = new WP_Error('weather_incomplete_range', 'The weather provider omitted one or more rain days.');
+    }
+  }
+  $result = is_wp_error($rows) ? $rows : ll706_auth_weather_store_rows($rows);
+  if (is_wp_error($result)) {
+    wp_schedule_single_event(time() + HOUR_IN_SECONDS, 'll706_auth_weather_rain_backfill');
+    return;
+  }
+  ll706_auth_weather_schedule_rain_backfill();
+}
+
 function ll706_auth_weather_api_url($start_date, $end_date, $kind) {
   $params = [
     'latitude' => LL706_AUTH_WEATHER_LATITUDE,
     'longitude' => LL706_AUTH_WEATHER_LONGITUDE,
     'start_date' => $start_date,
     'end_date' => $end_date,
-    'daily' => 'temperature_2m_max,temperature_2m_min,relative_humidity_2m_mean,wind_speed_10m_max',
+    'daily' => 'temperature_2m_max,temperature_2m_min,relative_humidity_2m_mean,wind_speed_10m_max,rain_sum',
     'temperature_unit' => 'fahrenheit',
     'wind_speed_unit' => 'mph',
+    'precipitation_unit' => 'inch',
     'timezone' => LL706_AUTH_WEATHER_TIMEZONE,
   ];
   if ($kind === 'historical') {
@@ -185,11 +236,12 @@ function ll706_auth_weather_fetch_range($start_date, $end_date, $kind) {
       ($units['temperature_2m_max'] ?? '') !== '°F' ||
       ($units['temperature_2m_min'] ?? '') !== '°F' ||
       ($units['relative_humidity_2m_mean'] ?? '') !== '%' ||
-      ($units['wind_speed_10m_max'] ?? '') !== 'mp/h') {
+      ($units['wind_speed_10m_max'] ?? '') !== 'mp/h' ||
+      ($units['rain_sum'] ?? '') !== 'inch') {
     return new WP_Error('weather_provider_units', 'Unexpected weather provider units.');
   }
 
-  $keys = ['time', 'temperature_2m_max', 'temperature_2m_min', 'relative_humidity_2m_mean', 'wind_speed_10m_max'];
+  $keys = ['time', 'temperature_2m_max', 'temperature_2m_min', 'relative_humidity_2m_mean', 'wind_speed_10m_max', 'rain_sum'];
   foreach ($keys as $key) {
     if (!isset($daily[$key]) || !is_array($daily[$key])) {
       return new WP_Error('weather_provider_data', 'Missing weather provider values.');
@@ -205,15 +257,17 @@ function ll706_auth_weather_fetch_range($start_date, $end_date, $kind) {
     $low = $daily['temperature_2m_min'][$index] ?? null;
     $humidity = $daily['relative_humidity_2m_mean'][$index] ?? null;
     $wind = $daily['wind_speed_10m_max'][$index] ?? null;
-    if (!is_numeric($high) || !is_numeric($low) || !is_numeric($humidity) || !is_numeric($wind)) {
+    $rain = $daily['rain_sum'][$index] ?? null;
+    if (!is_numeric($high) || !is_numeric($low) || !is_numeric($humidity) || !is_numeric($wind) || !is_numeric($rain)) {
       continue;
     }
     $high = (float) $high;
     $low = (float) $low;
     $humidity = (float) $humidity;
     $wind = (float) $wind;
-    if (!is_finite($high) || !is_finite($low) || !is_finite($humidity) || !is_finite($wind) ||
-        $high < $low || $high > 150 || $low < -100 || $humidity < 0 || $humidity > 100 || $wind < 0 || $wind > 300) {
+    $rain = (float) $rain;
+    if (!is_finite($high) || !is_finite($low) || !is_finite($humidity) || !is_finite($wind) || !is_finite($rain) ||
+        $high < $low || $high > 150 || $low < -100 || $humidity < 0 || $humidity > 100 || $wind < 0 || $wind > 300 || $rain < 0 || $rain > 80) {
       continue;
     }
     $rows[$date] = [
@@ -223,6 +277,7 @@ function ll706_auth_weather_fetch_range($start_date, $end_date, $kind) {
       'low_f' => round($low, 1),
       'humidity_mean_pct' => (int) round($humidity),
       'wind_max_mph' => round($wind, 1),
+      'rain_in' => round($rain, 3),
       'data_kind' => $kind,
       'model' => $kind === 'historical' ? ($start_date >= '2017-01-01' ? 'ecmwf_ifs' : 'era5') : 'best_match',
       'fetched_at' => gmdate('Y-m-d H:i:s'),
@@ -235,7 +290,7 @@ function ll706_auth_weather_store_rows($rows) {
   global $wpdb;
   $table = ll706_auth_weather_table_name();
   foreach ($rows as $row) {
-    $saved = $wpdb->replace($table, $row, ['%s', '%s', '%f', '%f', '%d', '%f', '%s', '%s', '%s']);
+    $saved = $wpdb->replace($table, $row, ['%s', '%s', '%f', '%f', '%d', '%f', '%f', '%s', '%s', '%s']);
     if ($saved === false) {
       return new WP_Error('weather_database', 'Unable to store weather data.');
     }
@@ -247,7 +302,7 @@ function ll706_auth_weather_get_row($date) {
   global $wpdb;
   $table = ll706_auth_weather_table_name();
   return $wpdb->get_row($wpdb->prepare(
-    "SELECT weather_date, high_f, low_f, humidity_mean_pct, wind_max_mph, data_kind, fetched_at
+    "SELECT weather_date, high_f, low_f, humidity_mean_pct, wind_max_mph, rain_in, data_kind, fetched_at
      FROM {$table} WHERE site_key = %s AND weather_date = %s LIMIT 1",
     LL706_AUTH_WEATHER_SITE,
     $date
@@ -256,6 +311,7 @@ function ll706_auth_weather_get_row($date) {
 
 function ll706_auth_weather_format_row($row) {
   if (!is_array($row)) return null;
+  $rain_in = isset($row['rain_in']) ? (float) $row['rain_in'] : null;
   return [
     'date' => $row['weather_date'],
     'location' => 'Barstow LMIT',
@@ -263,6 +319,8 @@ function ll706_auth_weather_format_row($row) {
     'low_f' => (float) $row['low_f'],
     'humidity_mean_pct' => (int) $row['humidity_mean_pct'],
     'wind_max_mph' => (float) $row['wind_max_mph'],
+    'rain_in' => $rain_in,
+    'did_rain' => $rain_in === null ? null : $rain_in > 0,
     'status' => $row['data_kind'],
     'source' => 'Open-Meteo',
     'source_url' => 'https://open-meteo.com/',
@@ -274,10 +332,10 @@ function ll706_auth_weather_format_row($row) {
 function ll706_auth_weather_refresh_day_if_needed($date) {
   $row = ll706_auth_weather_get_row($date);
   $today = ll706_auth_weather_today();
-  if ($row && ($row['data_kind'] ?? '') === 'historical') {
+  if ($row && ($row['data_kind'] ?? '') === 'historical' && isset($row['rain_in'])) {
     return $row;
   }
-  if ($row && $date === $today && strtotime($row['fetched_at'] . ' UTC') > time() - 6 * HOUR_IN_SECONDS) {
+  if ($row && isset($row['rain_in']) && $date === $today && strtotime($row['fetched_at'] . ' UTC') > time() - 6 * HOUR_IN_SECONDS) {
     return $row;
   }
 

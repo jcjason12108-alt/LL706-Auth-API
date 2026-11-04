@@ -36,7 +36,7 @@ $wpdb = new class {
     }
     if (strpos($query, 'FROM wp_ll706_weather_days WHERE site_key = barstow-lmit') !== false) {
       if (!empty($GLOBALS['weather_missing'])) return [];
-      return [['weather_date' => '2026-10-31', 'high_f' => '72.4', 'low_f' => '49.1', 'humidity_mean_pct' => '28', 'wind_max_mph' => '16.2', 'data_kind' => 'historical', 'fetched_at' => '2026-11-01 12:00:00']];
+      return [['weather_date' => '2026-10-31', 'high_f' => '72.4', 'low_f' => '49.1', 'humidity_mean_pct' => '28', 'wind_max_mph' => '16.2', 'rain_in' => '0.059', 'data_kind' => 'historical', 'fetched_at' => '2026-11-01 12:00:00']];
     }
     if (strpos($query, 'FROM wp_ll706_work_log_photos p') !== false) {
       return [['id' => 8, 'entry_uuid' => 'entry-5', 'photo_uuid' => 'photo-5']];
@@ -50,7 +50,7 @@ function ll706_auth_photo_table_name() { return 'wp_ll706_work_log_photos'; }
 function ll706_auth_weather_table_name() { return 'wp_ll706_weather_days'; }
 function ll706_auth_weather_valid_date($date) { return ll706_work_log_query_valid_date($date); }
 function ll706_auth_weather_refresh_day_if_needed($date) { $GLOBALS['weather_refreshed_date'] = $date; }
-function ll706_auth_weather_format_row($row) { return ['date' => $row['weather_date'], 'high_f' => (float) $row['high_f'], 'status' => $row['data_kind']]; }
+function ll706_auth_weather_format_row($row) { return ['date' => $row['weather_date'], 'high_f' => (float) $row['high_f'], 'rain_in' => (float) $row['rain_in'], 'did_rain' => (float) $row['rain_in'] > 0, 'status' => $row['data_kind']]; }
 function ll706_auth_format_work_log_row($row) { return $row; }
 function ll706_auth_photo_format_row($row) { return ['photo_uuid' => $row['photo_uuid']]; }
 require dirname(__DIR__) . '/work-log-query.php';
@@ -78,6 +78,7 @@ foreach ([4, 5] as $user_id) {
     check(strpos($wpdb->last_query, 'p.user_id = 5') !== false, 'Photo lookup did not isolate the requested user');
     check($GLOBALS['weather_refreshed_date'] === '2026-10-31', 'Single-date weather was not refreshed');
     check($result->data['entries'][0]['weather']['high_f'] === 72.4, 'Stored weather was not attached to the matching date');
+    check($result->data['entries'][0]['weather']['rain_in'] === 0.059 && $result->data['entries'][0]['weather']['did_rain'] === true, 'Stored rain was not attached to the matching date');
     check((bool) array_filter($wpdb->queries, static function ($query) {
       return strpos($query, 'FROM wp_ll706_weather_days WHERE site_key = barstow-lmit') !== false
         && strpos($query, 'weather_date IN (2026-10-31)') !== false;

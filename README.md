@@ -21,7 +21,7 @@ WordPress plugin that powers the LL706 mobile and web apps with hardened login, 
 - Optional service-key-only lineup intake and WordPress storage for extracted rows from backed-up photos.
 - Optional read-only Work Log and photo-reference query route for n8n, keyed by a requested WordPress user ID and protected by a separate service key. Use `has_photos=1` to find entries with active saved photos directly.
 - Per-user work-log reminder preferences with authenticated read/update endpoints for app-local scheduling.
-- Shared Barstow LMIT weather by work date, cached in WordPress and refreshed from Open-Meteo without member GPS or work-log data leaving the server.
+- Shared Barstow LMIT weather by work date, including daily rain in inches, cached in WordPress and refreshed from Open-Meteo without member GPS or work-log data leaving the server.
 - Public Android Digital Asset Links document at `/.well-known/assetlinks.json` so supported password managers can share saved website credentials with the Play-signed AskBruno app.
 - Android Restore Credentials endpoints that verify a transferred restore key and issue a new short-lived app token.
 - Top-level **LL706 Auth API** admin menu with Dashboard Form Card, Login Information Card, Login History, Work Log Photos, Overview, and Settings tabs.
@@ -97,7 +97,7 @@ The separate `/work-log-query/entries` endpoint gives n8n read-only access to a 
 define('LL706_WORK_LOG_QUERY_SERVICE_KEY', 'replace-with-a-different-long-random-secret');
 ```
 
-Requests use `X-LL706-Work-Log-Query-Key` over HTTPS and require a positive WordPress `user_id`. The key authenticates n8n to WordPress. The route returns only active entries and their active photo references for the requested user; photo bytes are never in the JSON response. Each entry also includes shared Barstow LMIT weather for its work date, or `weather: null` when no weather is available. Weather remains in its separate date-based table, and a single-date query can refresh that day's weather on demand. Optional `work_date`, `date_from`, `date_to`, `shift`, and `keyword` filters narrow the results. Set `has_photos=1` to return only entries with active saved photos; this lets the agent find a photo without paging through entries that have none. `before_id` and `limit` paginate the results. Keyword filtering is a substring search of Work Log text, so an agent must verify the exact unit or name in returned entries before answering. Mobile apps fetch selected photo bytes through the existing owner-only bearer-token photo endpoint.
+Requests use `X-LL706-Work-Log-Query-Key` over HTTPS and require a positive WordPress `user_id`. The key authenticates n8n to WordPress. The route returns only active entries and their active photo references for the requested user; photo bytes are never in the JSON response. Each entry also includes shared Barstow LMIT weather for its work date, or `weather: null` when no weather is available. Weather includes `rain_in` (daily rain in inches) and `did_rain`; both are `null` until an older cached day has been refreshed. Weather remains in its separate date-based table, and a single-date query can refresh that day's weather on demand. Optional `work_date`, `date_from`, `date_to`, `shift`, and `keyword` filters narrow the results. Set `has_photos=1` to return only entries with active saved photos; this lets the agent find a photo without paging through entries that have none. `before_id` and `limit` paginate the results. Keyword filtering is a substring search of Work Log text, so an agent must verify the exact unit or name in returned entries before answering. Mobile apps fetch selected photo bytes through the existing owner-only bearer-token photo endpoint.
 
 The current AskBruno chat workflow uses the app-supplied `metadata.unionUser.userId` as the requested ID. That value identifies which records to read but is not independently authenticated by this service. It does not create a vector copy; WordPress remains the source of truth.
 
@@ -139,9 +139,9 @@ All routes live under the namespace `ll706/v1`.
 
 Work-log reminder settings are stored as one per-user WordPress user-meta record. The app is responsible for scheduling local notifications; the API does not create or send reminder notifications.
 
-Weather uses the fixed worksite at 200 North Avenue H, Barstow, CA 92311. The response includes the daily high and low in °F, mean relative humidity in percent, maximum wind speed in mph, and `status` (`forecast` for today or `historical` for past dates). The weather is shared by date, not attached to a member's work-log row. A member with work-log backup disabled can request weather for a local-only entry without uploading that entry. Open-Meteo receives only the worksite coordinates and requested date. The response supplies `source_url` and `license_url`; the app must show Open-Meteo attribution near weather information and explain it in Work Log Info.
+Weather uses the fixed worksite at 200 North Avenue H, Barstow, CA 92311. The response includes the daily high and low in °F, mean relative humidity in percent, maximum wind speed in mph, daily rain in inches (`rain_in`), whether rain was reported (`did_rain`), and `status` (`forecast` for today or `historical` for past dates). `did_rain` is based on the Open-Meteo daily rain amount for the worksite, not a member observation; for a forecast it means rain is predicted. A missing rain measurement returns both rain fields as `null`, not zero. The weather is shared by date, not attached to a member's work-log row. A member with work-log backup disabled can request weather for a local-only entry without uploading that entry. Open-Meteo receives only the worksite coordinates and requested date. The response supplies `source_url` and `license_url`; the app must show Open-Meteo attribution near weather information and explain it in Work Log Info.
 
-The plugin creates a separate weather cache table on activation or upgrade. WP-Cron schedules a daily refresh for 9:00 a.m. Pacific, covering the last seven days and today's forecast, and backfills earlier dates in 30-day chunks beginning with March 27, 2026 or the earliest server work-log date. WP-Cron runs when WordPress receives traffic, so an event may run later than its scheduled time. A requested date that is not cached can also be fetched on demand. Weather fetch or cache failures return `weather: null` or the last cached value; they do not change existing work-log entries.
+The plugin creates a separate weather cache table on activation or upgrade. WP-Cron schedules a daily refresh for 9:00 a.m. Pacific, covering the last seven days and today's forecast, and backfills earlier dates in 30-day chunks beginning with March 27, 2026 or the earliest server work-log date. Upgrading to 0.9.32 also refreshes older cached days in 30-day chunks to fill their rain values. WP-Cron runs when WordPress receives traffic, so an event may run later than its scheduled time. A requested date that is not cached or whose rain is missing can also be fetched on demand. Weather fetch or cache failures return `weather: null` or the last cached value with unknown rain; they do not change existing work-log entries.
 
 ## Android credential sharing
 
@@ -233,6 +233,11 @@ These controls write the meta key configured in the settings page so you can ren
   (replace `ll706_approved` if you changed the meta key).
 
 ## Changelog
+
+### 0.9.32
+
+- Added daily rain in inches and a nullable `did_rain` field to shared Work Log weather and private Work Log query results.
+- Added a background refresh for previously cached weather days that lack rain data.
 
 ### 0.9.31
 
